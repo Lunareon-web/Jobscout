@@ -55,7 +55,7 @@ async def analyze(prompt_template: str, text: str, max_chars: int = 2000) -> dic
     full_prompt = prompt_template + trimmed
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{settings.ollama_host}/api/generate",
                 json={

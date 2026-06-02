@@ -110,15 +110,43 @@ def _parse_next_data(html: str, company_name: str, city: str) -> list[dict]:
     return jobs
 
 
+JOB_TITLE_KEYWORDS = re.compile(
+    r"projekt|project|manager|design|architect|interior|retail|store|"
+    r"leiter|leitung|referent|koordinator|consultant|berater|"
+    r"director|head\s+of|senior|junior|praktikum|trainee|werkstudent|"
+    r"kaufm|vertrieb|marketing|konzept|brand|visual|workplace|"
+    r"(m/w/d)|(w/m/d)|(gn)|stellenangebot|stelle\b|job\b|karriere",
+    re.I
+)
+
+NON_JOB_PATTERNS = re.compile(
+    r"award|preis|news|presse|blog|projekt\s+\d|instagram|linkedin|"
+    r"facebook|twitter|datenschutz|impressum|cookie|agb|newsletter|"
+    r"kontakt|über uns|home|startseite|referenz|portfolio",
+    re.I
+)
+
+
 def _parse_link_scan(html: str, base_url: str, company_name: str, city: str) -> list[dict]:
+    """Only picks up links that look like actual job postings."""
     jobs = []
     soup = BeautifulSoup(html, "lxml")
     seen = set()
+
+    # Only look in main content areas, not header/footer/nav
+    for tag in soup.find_all(['header', 'footer', 'nav']):
+        tag.decompose()
+
     for a in soup.find_all("a", href=True):
         txt = a.get_text(strip=True)
-        if not txt or len(txt) < 5 or len(txt) > 120:
+        if not txt or len(txt) < 8 or len(txt) > 100:
             continue
         if EXCLUDE_KEYWORDS.search(txt):
+            continue
+        if NON_JOB_PATTERNS.search(txt):
+            continue
+        # Must look like a job title
+        if not JOB_TITLE_KEYWORDS.search(txt):
             continue
         href = a["href"]
         if not href.startswith("http"):
@@ -126,6 +154,12 @@ def _parse_link_scan(html: str, base_url: str, company_name: str, city: str) -> 
             href = urljoin(base_url, href)
         if href in seen:
             continue
+        # Skip if URL doesn't contain job-related path
+        href_lower = href.lower()
+        if not any(kw in href_lower for kw in ['job', 'career', 'karriere', 'stell', 'work', 'vacanci', 'position']):
+            # Still allow if title is very clearly a job
+            if not re.search(r'\(m/w/d\)|\(w/m/d\)|projektmanager|projektleiter', txt, re.I):
+                continue
         seen.add(href)
         jobs.append({
             "title": txt,
@@ -136,7 +170,7 @@ def _parse_link_scan(html: str, base_url: str, company_name: str, city: str) -> 
             "description": "",
             "employment_type": "",
         })
-        if len(jobs) >= 15:
+        if len(jobs) >= 20:
             break
     return jobs
 
