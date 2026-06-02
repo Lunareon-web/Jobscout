@@ -61,11 +61,11 @@ export function useSupabaseJobs() {
     }
   }
 
-  // Load on mount if store is empty
+  // Always load from Supabase on mount + every 5 minutes
   useEffect(() => {
-    if (jobs.length === 0 && !loaded && !loading) {
-      loadFromSupabase()
-    }
+    loadFromSupabase()
+    const iv = setInterval(loadFromSupabase, 5 * 60 * 1000)
+    return () => clearInterval(iv)
   }, [])
 
   return { loadFromSupabase, loaded, loading }
