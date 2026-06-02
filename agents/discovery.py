@@ -6,6 +6,7 @@ Output → company_candidates
 import asyncio
 import logging
 import re
+from datetime import datetime
 import httpx
 from bs4 import BeautifulSoup
 from core.database import get_db
@@ -130,7 +131,7 @@ async def run() -> int:
         if c["website"] in existing:
             continue
         existing.add(c["website"])
-        db.table("company_candidates").insert({
+        res = db.table("company_candidates").insert({
             "name": c["name"][:200],
             "website": c["website"],
             "city": "Düsseldorf",
@@ -138,7 +139,15 @@ async def run() -> int:
             "source_type": c.get("source_type", "directory"),
             "status": "pending",
         }).execute()
-        Q.enqueue("company_candidate", delay_seconds=0)
+        if res.data:
+            candidate_id = res.data[0]["id"]
+            db.table("crawl_queue").insert({
+                "entity_type": "validation",
+                "entity_id": candidate_id,
+                "priority": 7,
+                "status": "pending",
+                "next_run": (datetime.utcnow()).isoformat() + "Z",
+            }).execute()
         total_new += 1
 
     # Bing search for additional discovery
@@ -151,16 +160,23 @@ async def run() -> int:
             if c["website"] in existing:
                 continue
             existing.add(c["website"])
-            db.table("company_candidates").insert({
+            res = db.table("company_candidates").insert({
                 "name": c["name"][:200],
                 "website": c["website"],
-                "city": "Düsseldorf",  # will be refined by validation
+                "city": "Düsseldorf",
                 "source_url": c.get("source_url"),
                 "source_type": c.get("source_type", "search"),
                 "status": "pending",
             }).execute()
-            # Immediately enqueue for validation
-            Q.enqueue("validation", delay_seconds=0)
+            if res.data:
+                candidate_id = res.data[0]["id"]
+                db.table("crawl_queue").insert({
+                    "entity_type": "validation",
+                    "entity_id": candidate_id,
+                    "priority": 7,
+                    "status": "pending",
+                    "next_run": (datetime.utcnow()).isoformat() + "Z",
+                }).execute()
             total_new += 1
 
     log.info(f"Discovery done. New candidates: {total_new}")
