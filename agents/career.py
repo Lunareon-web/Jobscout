@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from core.database import get_db
 from core import ollama_client as LLM
 from core import queue as Q
+from core.job_validator import is_real_job
 
 log = logging.getLogger(__name__)
 
@@ -252,15 +253,24 @@ async def run(company_id: str) -> int:
             jobs = _parse_next_data(html, c["name"], c["city"])
         # Link-Scan deaktiviert — zu viele Falsch-Positive (Produkt-/Navigationsseiten)
 
-        # Deduplicate + save
+        # Validate + save
         page_new = 0
         for job in jobs:
+            # ── Echte Stellenanzeige? ──────────────────────────
+            valid, reason = is_real_job(
+                job["title"],
+                job.get("url", ""),
+                job.get("description", ""),
+            )
+            if not valid:
+                log.debug(f"  Skipped (not a job): {reason}")
+                continue
+
             job_id = _make_id(job["title"], c["name"], job["url"])
             score = await _score_job(job["title"], job.get("description", ""))
 
             existing = db.table("jobs").select("id").eq("id", job_id).execute()
             if existing.data:
-                # Update last_seen
                 db.table("jobs").update({"last_seen": now, "is_active": True}).eq("id", job_id).execute()
                 continue
 
