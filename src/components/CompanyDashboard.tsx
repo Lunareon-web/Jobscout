@@ -54,12 +54,16 @@ export default function CompanyDashboard() {
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('companies')
       .select('id,name,website,city,industry,employee_range,services,score,priority')
       .order('score', { ascending: false })
       .limit(200)
-    setCompanies(data || [])
+      .throwOnError()
+      .then(r => r)
+      .catch(e => ({ data: null, error: e }))
+    if (error) console.error('Companies load error:', error)
+    setCompanies((data as any) || [])
     setLoading(false)
   }
 
