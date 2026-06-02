@@ -6,6 +6,8 @@ import { JobCard } from './components/JobCard'
 import { SourcesPanel } from './components/SourcesPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { LogPanel } from './components/LogPanel'
+import CompanyDashboard from './components/CompanyDashboard'
+import IntelligenceFeed from './components/IntelligenceFeed'
 import { useSearch } from './hooks/useSearch'
 import { useStore } from './store'
 import { formatDate } from './lib/utils'
@@ -121,6 +123,16 @@ export default function App() {
           {activeTab==='log' && <LogPanel />}
           {activeTab==='sources' && <SourcesPanel />}
           {activeTab==='settings' && <SettingsPanel />}
+          {activeTab==='companies' && (
+            <div style={{height:'calc(100vh - 92px)',overflow:'hidden',margin:'-20px -24px'}}>
+              <CompanyDashboard />
+            </div>
+          )}
+          {activeTab==='feed' && (
+            <div style={{height:'calc(100vh - 92px)',overflow:'hidden',margin:'-20px -24px'}}>
+              <IntelligenceFeed />
+            </div>
+          )}
         </main>
       </div>
       <Toaster position="bottom-right" toastOptions={{

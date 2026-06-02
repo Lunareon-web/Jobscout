@@ -1,4 +1,4 @@
-import { Search, Star, BarChart3, Plug, Settings, Grid3X3, Palette, Armchair, Building, Briefcase, LayoutGrid, MoreHorizontal } from 'lucide-react'
+import { Search, Star, BarChart3, Plug, Settings, Grid3X3, Palette, Armchair, Building, Briefcase, LayoutGrid, MoreHorizontal, Building2, Bell } from 'lucide-react'
 import { useStore } from '../store'
 import type { FilterCategory, SortOption } from '../types'
 
@@ -21,11 +21,13 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ]
 
 const NAV_ITEMS = [
-  { id: 'results',  label: 'Alle Stellen',  icon: <LayoutGrid size={14} /> },
-  { id: 'favs',     label: 'Favoriten',     icon: <Star size={14} /> },
-  { id: 'log',      label: 'Quellen-Log',   icon: <BarChart3 size={14} /> },
-  { id: 'sources',  label: 'Quellen',       icon: <Plug size={14} /> },
-  { id: 'settings', label: 'Einstellungen', icon: <Settings size={14} /> },
+  { id: 'results',   label: 'Alle Stellen',   icon: <LayoutGrid size={14} />,  group: 'search' },
+  { id: 'favs',      label: 'Favoriten',      icon: <Star size={14} />,        group: 'search' },
+  { id: 'companies', label: 'Unternehmen',    icon: <Building2 size={14} />,   group: 'intel' },
+  { id: 'feed',      label: 'Intelligence',   icon: <Bell size={14} />,        group: 'intel' },
+  { id: 'log',       label: 'Quellen-Log',    icon: <BarChart3 size={14} />,   group: 'tools' },
+  { id: 'sources',   label: 'Quellen',        icon: <Plug size={14} />,        group: 'tools' },
+  { id: 'settings',  label: 'Einstellungen',  icon: <Settings size={14} />,    group: 'tools' },
 ]
 
 interface Props {
@@ -139,29 +141,38 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
 
       {/* Navigation */}
       <div style={{ padding: '12px 14px', flex: 1 }}>
-        <div style={{ fontSize: 10, color: 'var(--fog)', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 8 }}>Ansicht</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {NAV_ITEMS.map(item => {
-            const isActive = activeTab === item.id
-            return (
-              <button
-                key={item.id}
-                onClick={() => onTabChange(item.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '7px 10px', borderRadius: 'var(--r)',
-                  fontSize: 12, fontWeight: isActive ? 600 : 400,
-                  background: isActive ? 'var(--gold-dim)' : 'transparent',
-                  color: isActive ? 'var(--gold)' : 'var(--fog-2)',
-                  width: '100%', textAlign: 'left',
-                }}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
+        {(['search','intel','tools'] as const).map(group => {
+          const groupItems = NAV_ITEMS.filter(i => i.group === group)
+          const groupLabel = group === 'search' ? 'Suche' : group === 'intel' ? '🤖 Intelligence' : 'Tools'
+          return (
+            <div key={group} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: 'var(--fog)', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 6 }}>{groupLabel}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {groupItems.map(item => {
+                  const isActive = activeTab === item.id
+                  const isIntel = item.group === 'intel'
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onTabChange(item.id)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '7px 10px', borderRadius: 'var(--r)',
+                        fontSize: 12, fontWeight: isActive ? 600 : 400,
+                        background: isActive ? (isIntel ? 'rgba(59,130,246,0.15)' : 'var(--gold-dim)') : 'transparent',
+                        color: isActive ? (isIntel ? '#60a5fa' : 'var(--gold)') : 'var(--fog-2)',
+                        width: '100%', textAlign: 'left',
+                      }}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Phase indicator */}
