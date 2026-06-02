@@ -1,5 +1,6 @@
-import { Save, RotateCcw } from 'lucide-react'
+import { Save, RotateCcw, Zap, CheckCircle } from 'lucide-react'
 import { useStore } from '../store'
+import { supabase } from '../lib/supabase'
 import { toast } from 'react-hot-toast'
 
 const DEFAULT_JOBTITEL = [
@@ -9,11 +10,43 @@ const DEFAULT_JOBTITEL = [
   'Brand Designer', 'Visual Merchandiser',
 ]
 
+const label = (text: string): React.CSSProperties => ({
+  fontSize: 12.5, color: 'var(--txt2)', marginBottom: 6, fontWeight: 500, display: 'block',
+})
+
+const sectionStyle: React.CSSProperties = {
+  background: 'var(--bg)', border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)', padding: '20px 22px',
+  boxShadow: 'var(--shadow-sm)',
+}
+
+const sectionTitle = (icon: React.ReactNode, text: string) => (
+  <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, letterSpacing: '-.2px' }}>
+    <span style={{ color: 'var(--accent)' }}>{icon}</span> {text}
+  </h3>
+)
+
 export function SettingsPanel() {
   const { config, setConfig } = useStore()
 
-  function save() {
-    toast.success('Einstellungen gespeichert')
+  async function save() {
+    // Save to Supabase so the Discovery Agent can read it
+    const { error } = await supabase.from('app_config').upsert({
+      key: 'search_config',
+      value: {
+        standort: config.standort,
+        umkreis: config.umkreis,
+        jobtitel: config.jobtitel,
+      },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' })
+
+    if (error) {
+      toast.error('Fehler beim Speichern')
+      console.error(error)
+    } else {
+      toast.success('Gespeichert — Discovery Agent verwendet diese Jobtitel')
+    }
   }
 
   function reset() {
@@ -22,90 +55,81 @@ export function SettingsPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
 
-      {/* Search params */}
-      <section style={{ background: 'var(--ink-2)', border: '1px solid var(--ink-4)', borderRadius: 'var(--r-lg)', padding: 20 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--paper)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          Suchparameter
-        </h3>
+      {/* Info Box */}
+      <div style={{ padding: '12px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--accent-txt)', lineHeight: 1.6 }}>
+        <strong>Wie der Crawler funktioniert:</strong> Der Discovery Agent sucht bei Bing nach Unternehmen die Stellen mit deinen konfigurierten Jobtiteln ausschreiben — z.B. <em>„Interior Designer Stelle Düsseldorf"</em>. Gefundene Firmen werden automatisch validiert, ihre Karriereseiten gecrawlt und neue Jobs eingespeichert.
+      </div>
+
+      {/* Search Params */}
+      <section style={sectionStyle}>
+        {sectionTitle(<CheckCircle size={17} />, 'Suchparameter')}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--fog)', letterSpacing: '0.4px' }}>Standort</span>
-            <input
-              value={config.standort}
-              onChange={e => setConfig({ standort: e.target.value })}
-              placeholder="Düsseldorf"
-            />
+          <label>
+            <span style={label('x')}>Standort</span>
+            <input value={config.standort} onChange={e => setConfig({ standort: e.target.value })} placeholder="Düsseldorf" />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--fog)', letterSpacing: '0.4px' }}>Umkreis (km)</span>
-            <input
-              type="number" min={10} max={150}
-              value={config.umkreis}
-              onChange={e => setConfig({ umkreis: parseInt(e.target.value) || 50 })}
-            />
+          <label>
+            <span style={label('x')}>Umkreis (km)</span>
+            <input type="number" min={10} max={150} value={config.umkreis} onChange={e => setConfig({ umkreis: parseInt(e.target.value) || 50 })} />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 11, color: 'var(--fog)', letterSpacing: '0.4px' }}>Max. Alter (Tage)</span>
-            <input
-              type="number" min={1} max={30}
-              value={config.maxTage}
-              onChange={e => setConfig({ maxTage: parseInt(e.target.value) || 15 })}
-            />
+          <label>
+            <span style={label('x')}>Max. Alter (Tage)</span>
+            <input type="number" min={1} max={30} value={config.maxTage} onChange={e => setConfig({ maxTage: parseInt(e.target.value) || 15 })} />
           </label>
         </div>
       </section>
 
       {/* Jobtitel */}
-      <section style={{ background: 'var(--ink-2)', border: '1px solid var(--ink-4)', borderRadius: 'var(--r-lg)', padding: 20 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--paper)', marginBottom: 6 }}>Jobtitel</h3>
-        <p style={{ fontSize: 11, color: 'var(--fog)', marginBottom: 12 }}>Kommasepariert — einer pro Zeile oder kommagetrennt</p>
+      <section style={sectionStyle}>
+        {sectionTitle(<Zap size={17} />, 'Jobtitel — Basis für die Unternehmens-Suche')}
+        <p style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 12, lineHeight: 1.6 }}>
+          Der Discovery Agent sucht gezielt nach Unternehmen, die diese Rollen besetzen. Je spezifischer, desto besser die Treffer.
+        </p>
         <textarea
-          rows={8}
+          rows={10}
           value={config.jobtitel.join('\n')}
           onChange={e => setConfig({ jobtitel: e.target.value.split(/[\n,]/).map(t => t.trim()).filter(Boolean) })}
-          style={{ fontSize: 12, resize: 'vertical', fontFamily: 'var(--mono)' }}
+          style={{ fontSize: 13, resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.7, background: 'var(--bg2)', borderColor: 'transparent' }}
+          placeholder="Projektmanager&#10;Interior Designer&#10;Design Manager&#10;..."
         />
-        <div style={{ fontSize: 11, color: 'var(--fog)', marginTop: 6 }}>
-          {config.jobtitel.length} Jobtitel konfiguriert
+        <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 6 }}>
+          {config.jobtitel.length} Jobtitel · werden für Suche + Karriere-Matching verwendet
         </div>
       </section>
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 10 }}>
-        <button
-          onClick={save}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '9px 18px', borderRadius: 'var(--r)',
-            background: 'var(--gold)', color: 'var(--ink)',
-            fontSize: 13, fontWeight: 700,
-          }}
-        >
+        <button onClick={save} style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '10px 20px', borderRadius: 'var(--radius-sm)',
+          background: 'var(--accent)', color: '#fff',
+          fontSize: 13.5, fontWeight: 600, border: 'none',
+          boxShadow: '0 4px 12px -3px rgba(79,70,229,.5)', cursor: 'pointer',
+        }}>
           <Save size={14} /> Speichern
         </button>
-        <button
-          onClick={reset}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            padding: '9px 14px', borderRadius: 'var(--r)',
-            background: 'var(--ink-4)', color: 'var(--fog-2)',
-            fontSize: 13, fontWeight: 500,
-          }}
-        >
+        <button onClick={reset} style={{
+          display: 'flex', alignItems: 'center', gap: 7,
+          padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg)', color: 'var(--txt2)',
+          border: '1px solid var(--border)', fontSize: 13, fontWeight: 500,
+          boxShadow: 'var(--shadow-sm)', cursor: 'pointer',
+        }}>
           <RotateCcw size={14} /> Zurücksetzen
         </button>
       </div>
 
-      {/* Info */}
-      <section style={{ background: 'var(--ink-2)', border: '1px solid var(--ink-4)', borderRadius: 'var(--r-lg)', padding: 20 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--paper)', marginBottom: 10 }}>Architektur</h3>
-        <div style={{ fontSize: 12, color: 'var(--fog)', lineHeight: 1.8, fontFamily: 'var(--mono)' }}>
+      {/* Architecture */}
+      <section style={sectionStyle}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', marginBottom: 10 }}>Architektur</h3>
+        <div style={{ fontSize: 12.5, color: 'var(--txt2)', lineHeight: 2, fontFamily: 'monospace' }}>
           <div>Frontend  → React + Vite → Vercel</div>
-          <div>Backend   → Vercel Serverless Functions (Node.js)</div>
+          <div>Backend   → FastAPI (lokal) + APScheduler</div>
           <div>Datenbank → Supabase (PostgreSQL)</div>
-          <div>Quellen   → BA-API + RSS + Scraping (parallel)</div>
+          <div>Quellen   → Bing Discovery + Direktcrawl + BA-API</div>
+          <div>KI        → Ollama / gemma4-fast (lokal)</div>
         </div>
       </section>
     </div>
