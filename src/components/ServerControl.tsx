@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Play, Square, RefreshCw, Zap, Wifi, WifiOff } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Play, Square, RefreshCw, Zap, Wifi, WifiOff, Terminal } from 'lucide-react'
 
 const LAUNCHER = 'http://localhost:8001'
 const BACKEND  = 'http://localhost:8000'
@@ -30,6 +30,9 @@ export default function ServerControl() {
   const [launcherOk, setLauncherOk] = useState<boolean | null>(null)
   const [loading, setLoading]     = useState(false)
   const [msg, setMsg]             = useState('')
+  const [logs, setLogs]           = useState<string[]>([])
+  const [showLogs, setShowLogs]   = useState(false)
+  const logRef                    = useRef<HTMLDivElement>(null)
 
   const check = async () => {
     try {
@@ -39,7 +42,23 @@ export default function ServerControl() {
     setLauncherOk(false); setStatus(null)
   }
 
+  const fetchLogs = async () => {
+    try {
+      const r = await fetch(`${LAUNCHER}/logs`)
+      if (r.ok) { const d = await r.json(); setLogs(d.lines || []) }
+    } catch {}
+  }
+
   useEffect(() => { check(); const iv = setInterval(check, 5000); return () => clearInterval(iv) }, [])
+  useEffect(() => {
+    if (!showLogs) return
+    fetchLogs()
+    const iv = setInterval(fetchLogs, 3000)
+    return () => clearInterval(iv)
+  }, [showLogs])
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [logs])
 
   const action = async (a: 'start' | 'stop') => {
     setLoading(true); setMsg('')
@@ -135,6 +154,42 @@ export default function ServerControl() {
 
       {/* Message */}
       {msg && <p style={{ fontSize: 11, color: 'var(--fog)', textAlign: 'center' }}>{msg}</p>}
+
+      {/* Log Toggle */}
+      {launcherOk && (
+        <button onClick={() => setShowLogs(v => !v)} style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 6, padding: '7px 0', borderRadius: 'var(--r)', marginBottom: 10,
+          fontSize: 12, cursor: 'pointer',
+          background: 'var(--ink-3)', color: 'var(--fog-2)',
+          border: '1px solid var(--ink-5)',
+        }}>
+          <Terminal size={12} /> {showLogs ? 'Log ausblenden' : 'Log anzeigen'}
+        </button>
+      )}
+
+      {/* Log Viewer */}
+      {showLogs && (
+        <div ref={logRef} style={{
+          background: '#0a0a0a', borderRadius: 'var(--r)',
+          border: '1px solid var(--ink-5)',
+          height: 220, overflowY: 'auto', padding: '8px 10px',
+          marginBottom: 10, fontFamily: 'monospace', fontSize: 10,
+          lineHeight: 1.6, color: '#a0a0a0',
+        }}>
+          {logs.length === 0
+            ? <span style={{ color: 'var(--fog)' }}>Keine Logs vorhanden</span>
+            : logs.map((line, i) => (
+              <div key={i} style={{
+                color: line.includes('ERROR') ? '#f87171'
+                  : line.includes('WARNING') ? '#fb923c'
+                  : line.includes('INFO') ? '#86efac'
+                  : '#a0a0a0'
+              }}>{line}</div>
+            ))
+          }
+        </div>
+      )}
 
       {/* Setup hint */}
       {launcherOk === false && (
