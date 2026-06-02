@@ -41,7 +41,7 @@ export default function App() {
     ])
     const csv = [headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'}))
+    a.href = URL.createObjectURL(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}))
     a.download = `jobscout_${new Date().toISOString().slice(0,10)}.csv`
     a.click()
     toast.success(`${filtered.length} Stellen exportiert`)
@@ -54,104 +54,190 @@ export default function App() {
   const isRunning = searchPhase !== 'idle' && searchPhase !== 'done' && searchPhase !== 'error'
 
   return (
-    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column'}}>
-      <Topbar onSearch={handleSearch} onSettings={()=>setActiveTab('settings')} onExport={handleExport} />
-      <div style={{display:'flex',flex:1}}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--page)' }}>
+      <Topbar onSearch={handleSearch} onSettings={() => setActiveTab('settings')} onExport={handleExport} />
+      <div style={{ display: 'flex', flex: 1 }}>
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-        <main style={{flex:1,padding:'20px 24px',minWidth:0,overflowY:'auto',maxHeight:'calc(100vh - 52px)'}}>
+        <main style={{
+          flex: 1, padding: '24px 28px', minWidth: 0,
+          overflowY: 'auto', maxHeight: 'calc(100vh - 64px)',
+        }}>
+          <div style={{ maxWidth: 820 }}>
 
-          {isRunning && (
-            <div style={{marginBottom:20}}>
-              <div style={{height:3,background:'var(--ink-4)',borderRadius:99,overflow:'hidden'}}>
-                <div style={{height:'100%',background:'var(--gold)',borderRadius:99,
-                  width: searchPhase==='fast'?'25%':searchPhase==='portals'?'60%':'85%',
-                  transition:'width 600ms var(--ease)'}} />
+            {/* Progress bar */}
+            {isRunning && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ height: 4, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    background: 'linear-gradient(90deg, var(--accent), #7c74f2)',
+                    borderRadius: 99,
+                    width: searchPhase === 'fast' ? '25%' : searchPhase === 'portals' ? '60%' : '85%',
+                    transition: 'width 600ms ease',
+                  }} />
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 6, fontWeight: 500 }}>
+                  {searchPhase === 'fast'    && '1/3 — Bundesagentur für Arbeit (parallel)…'}
+                  {searchPhase === 'portals' && '2/3 — Portale: Kimeta, StepStone, RSS-Feeds…'}
+                  {searchPhase === 'firmen'  && '3/3 — 20 Firmenseiten direkt…'}
+                </p>
               </div>
-              <p style={{fontSize:11,color:'var(--fog)',marginTop:6}}>
-                {searchPhase==='fast' && '1/3 — Bundesagentur für Arbeit (parallel)…'}
-                {searchPhase==='portals' && '2/3 — Portale: Kimeta, StepStone, RSS-Feeds…'}
-                {searchPhase==='firmen' && '3/3 — 20 Firmenseiten direkt…'}
-              </p>
-            </div>
-          )}
+            )}
 
-          {(activeTab==='results'||activeTab==='favs') && (
-            <>
-              {jobs.length===0 && !isRunning && (
-                <div style={{textAlign:'center',padding:'80px 20px'}}>
-                  <div style={{width:64,height:64,borderRadius:'50%',background:'var(--gold-dim)',border:'1px solid rgba(201,168,76,0.2)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 20px',fontSize:28}}>🔍</div>
-                  <h2 style={{fontSize:20,fontWeight:700,marginBottom:10,color:'var(--paper)'}}>Bereit zur Suche</h2>
-                  <p style={{fontSize:14,color:'var(--fog)',maxWidth:380,margin:'0 auto 24px',lineHeight:1.7}}>
-                    Durchsucht <strong style={{color:'var(--paper)'}}>BA-API + RSS-Feeds + 20 Firmenseiten</strong> parallel in 3 Stufen.
-                  </p>
-                  <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-                    <button onClick={handleSearch} style={{padding:'12px 28px',borderRadius:'var(--r)',background:'var(--gold)',color:'var(--ink)',fontSize:14,fontWeight:700}}>
-                      Suche starten
-                    </button>
-                    <button onClick={loadFromSupabase} disabled={supabaseLoading} style={{padding:'12px 28px',borderRadius:'var(--r)',background:'var(--ink-4)',color:'var(--paper)',fontSize:14,fontWeight:600,opacity:supabaseLoading?0.6:1}}>
-                      {supabaseLoading ? 'Lade…' : '🗄 Aus Datenbank laden'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {jobs.length>0 && allFiltered.length===0 && (
-                <div style={{textAlign:'center',padding:'60px 20px',color:'var(--fog)'}}>
-                  <p style={{fontSize:14}}>Keine Treffer für die aktuellen Filter.</p>
-                </div>
-              )}
-
-              {pageJobs.length>0 && (
-                <>
-                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-                    <div style={{fontSize:12,color:'var(--fog)'}}>{allFiltered.length} Stellen</div>
-                    {totalPages>1 && <div style={{fontSize:12,color:'var(--fog)'}}>Seite {page} / {totalPages}</div>}
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {pageJobs.map(job => <JobCard key={job.id} job={job} />)}
-                  </div>
-                  {totalPages>1 && (
-                    <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,padding:'24px 0'}}>
-                      <button onClick={()=>{setCurrentPage(page-1);window.scrollTo(0,0)}} disabled={page<=1}
-                        style={{padding:'8px 16px',borderRadius:'var(--r)',background:'var(--ink-4)',color:page>1?'var(--paper)':'var(--fog)',fontSize:12,fontWeight:500,opacity:page<=1?0.4:1}}>
-                        ← Zurück
+            {(activeTab === 'results' || activeTab === 'favs') && (
+              <>
+                {/* Empty start state */}
+                {jobs.length === 0 && !isRunning && (
+                  <div style={{ textAlign: 'center', padding: '72px 20px' }}>
+                    <div style={{
+                      width: 72, height: 72, borderRadius: 20,
+                      background: 'var(--accent-soft)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      margin: '0 auto 20px',
+                    }}>
+                      <span style={{ fontSize: 34, color: 'var(--accent)' }}>🔍</span>
+                    </div>
+                    <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 9, color: 'var(--txt)', letterSpacing: '-.3px' }}>
+                      Bereit zur Suche
+                    </h2>
+                    <p style={{ fontSize: 14, color: 'var(--txt2)', maxWidth: 380, margin: '0 auto 24px', lineHeight: 1.65 }}>
+                      Durchsucht <strong style={{ color: 'var(--txt)', fontWeight: 700 }}>BA-API + RSS-Feeds + 20 Firmenseiten</strong> parallel in 3 Stufen.
+                    </p>
+                    <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={handleSearch}
+                        style={{
+                          padding: '10px 24px', borderRadius: 'var(--radius-sm)',
+                          background: 'var(--accent)', color: '#fff',
+                          fontSize: 13.5, fontWeight: 600,
+                          boxShadow: '0 4px 12px -3px rgba(79,70,229,.5)',
+                          border: 'none',
+                        }}
+                      >
+                        Suche starten
                       </button>
-                      <span style={{fontSize:12,color:'var(--fog)'}}>{page} / {totalPages}</span>
-                      <button onClick={()=>{setCurrentPage(page+1);window.scrollTo(0,0)}} disabled={page>=totalPages}
-                        style={{padding:'8px 16px',borderRadius:'var(--r)',background:'var(--ink-4)',color:page<totalPages?'var(--paper)':'var(--fog)',fontSize:12,fontWeight:500,opacity:page>=totalPages?0.4:1}}>
-                        Weiter →
+                      <button
+                        onClick={loadFromSupabase}
+                        disabled={supabaseLoading}
+                        style={{
+                          padding: '10px 24px', borderRadius: 'var(--radius-sm)',
+                          background: 'var(--bg)', color: 'var(--txt2)',
+                          border: '1px solid var(--border)',
+                          fontSize: 13.5, fontWeight: 600,
+                          opacity: supabaseLoading ? 0.6 : 1,
+                          boxShadow: 'var(--shadow-sm)',
+                        }}
+                      >
+                        {supabaseLoading ? 'Lade…' : '🗄 Aus Datenbank laden'}
                       </button>
                     </div>
-                  )}
-                </>
-              )}
-            </>
-          )}
+                  </div>
+                )}
 
-          {activeTab==='log' && <LogPanel />}
-          {activeTab==='sources' && <SourcesPanel />}
-          {activeTab==='settings' && (
-            <div style={{display:'flex',gap:24,flexWrap:'wrap',alignItems:'flex-start'}}>
-              <SettingsPanel />
-              <ServerControl />
-            </div>
-          )}
-          {activeTab==='companies' && (
-            <div style={{height:'calc(100vh - 92px)',overflow:'hidden',margin:'-20px -24px'}}>
+                {/* No results for filter */}
+                {jobs.length > 0 && allFiltered.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                    <div style={{
+                      width: 72, height: 72, borderRadius: 20,
+                      background: 'var(--accent-soft)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      margin: '0 auto 20px',
+                    }}>
+                      <span style={{ fontSize: 34 }}>😶</span>
+                    </div>
+                    <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--txt)', marginBottom: 9, letterSpacing: '-.3px' }}>Keine Treffer</h3>
+                    <p style={{ fontSize: 14, color: 'var(--txt2)' }}>Filter anpassen oder Kategorie wechseln.</p>
+                  </div>
+                )}
+
+                {/* Results list */}
+                {pageJobs.length > 0 && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, color: 'var(--txt2)', fontWeight: 600 }}>
+                        {allFiltered.length} Stellen
+                      </div>
+                      {totalPages > 1 && (
+                        <div style={{ fontSize: 13, color: 'var(--txt2)', fontWeight: 600 }}>
+                          Seite {page} / {totalPages}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {pageJobs.map(job => <JobCard key={job.id} job={job} />)}
+                    </div>
+                    {totalPages > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '26px 0 6px' }}>
+                        <button
+                          onClick={() => { setCurrentPage(page - 1); window.scrollTo(0, 0) }}
+                          disabled={page <= 1}
+                          style={{
+                            padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)', color: page > 1 ? 'var(--txt2)' : 'var(--txt3)',
+                            fontSize: 13, fontWeight: 600,
+                            boxShadow: 'var(--shadow-sm)', opacity: page <= 1 ? 0.4 : 1,
+                          }}
+                        >← Zurück</button>
+                        <span style={{ fontSize: 13, color: 'var(--txt2)', fontWeight: 600 }}>
+                          {page} / {totalPages}
+                        </span>
+                        <button
+                          onClick={() => { setCurrentPage(page + 1); window.scrollTo(0, 0) }}
+                          disabled={page >= totalPages}
+                          style={{
+                            padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border)',
+                            background: 'var(--bg)', color: page < totalPages ? 'var(--txt2)' : 'var(--txt3)',
+                            fontSize: 13, fontWeight: 600,
+                            boxShadow: 'var(--shadow-sm)', opacity: page >= totalPages ? 0.4 : 1,
+                          }}
+                        >Weiter →</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {activeTab === 'log'      && <LogPanel />}
+            {activeTab === 'sources'  && <SourcesPanel />}
+            {activeTab === 'settings' && (
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <SettingsPanel />
+                <ServerControl />
+              </div>
+            )}
+          </div>
+
+          {activeTab === 'companies' && (
+            <div style={{ height: 'calc(100vh - 88px)', overflow: 'hidden', margin: '-24px -28px' }}>
               <CompanyDashboard />
             </div>
           )}
-          {activeTab==='feed' && (
-            <div style={{height:'calc(100vh - 92px)',overflow:'hidden',margin:'-20px -24px'}}>
+          {activeTab === 'feed' && (
+            <div style={{ height: 'calc(100vh - 88px)', overflow: 'hidden', margin: '-24px -28px' }}>
               <IntelligenceFeed />
             </div>
           )}
         </main>
       </div>
-      <Toaster position="bottom-right" toastOptions={{
-        style:{background:'var(--ink-3)',color:'var(--paper)',border:'1px solid var(--ink-5)',fontFamily:'var(--font)',fontSize:13},
-        success:{iconTheme:{primary:'var(--gold)',secondary:'var(--ink)'}},
-      }}/>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: 'var(--txt)',
+            color: '#fff',
+            fontFamily: 'var(--font)',
+            fontSize: 13.5,
+            fontWeight: 500,
+            borderRadius: 11,
+            boxShadow: 'var(--shadow-lg)',
+          },
+          success: { iconTheme: { primary: '#1f7a45', secondary: '#fff' } },
+          error:   { iconTheme: { primary: '#bb3636', secondary: '#fff' } },
+        }}
+      />
     </div>
   )
 }

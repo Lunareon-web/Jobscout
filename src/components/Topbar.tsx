@@ -27,55 +27,65 @@ export function Topbar({ onSearch, onSettings, onExport }: Props) {
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 100,
-      background: 'var(--ink-2)',
-      borderBottom: '1px solid var(--ink-4)',
-      height: 52,
+      background: 'rgba(255,255,255,.82)',
+      backdropFilter: 'saturate(180%) blur(14px)',
+      WebkitBackdropFilter: 'saturate(180%) blur(14px)',
+      borderBottom: '1px solid var(--border)',
+      height: 64,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 20px',
+      padding: '0 24px',
     }}>
       {/* Brand */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
-          width: 30, height: 30, borderRadius: 8,
-          background: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+          background: 'linear-gradient(145deg, var(--accent), #6d63f0)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 12px -2px rgba(79,70,229,.45)',
         }}>
-          <Search size={14} color="var(--ink)" strokeWidth={2.5} />
+          <Search size={18} color="#fff" strokeWidth={2.5} />
         </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--paper)' }}>Job-Scout</div>
-          <div style={{ fontSize: 10, color: 'var(--fog)', letterSpacing: '0.4px' }}>DÜSSELDORF · 50 KM</div>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--txt)' }}>JobScout</div>
+          <div style={{ fontSize: 11.5, color: 'var(--txt3)', fontWeight: 500, whiteSpace: 'nowrap' }}>Düsseldorf · Kreativ &amp; Architektur</div>
         </div>
 
         {/* Progress indicator */}
         {isRunning && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: 'var(--gold-dim)', borderRadius: 99,
-            padding: '4px 12px', fontSize: 11, color: 'var(--gold)',
+            background: 'var(--accent-soft)', borderRadius: 99,
+            padding: '4px 12px', fontSize: 11.5, color: 'var(--accent)',
+            marginLeft: 6,
           }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--gold)', animation: 'spin 1s linear infinite' }} />
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
             {phaseLabel}
           </div>
         )}
 
         {searchPhase === 'done' && lastSearchAt && (
-          <div style={{ fontSize: 11, color: 'var(--fog)', marginLeft: 4 }}>
+          <div style={{
+            fontSize: 11.5, color: 'var(--txt3)', fontWeight: 500,
+            marginLeft: 14, paddingLeft: 14, borderLeft: '1px solid var(--border)',
+          }}>
             {jobs.length} Stellen · {new Date(lastSearchAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
           </div>
         )}
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <button
           onClick={loadFromSupabase}
           disabled={dbLoading}
           title="Neue Crawler-Ergebnisse laden"
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 10px', borderRadius: 'var(--r)',
-            background: 'var(--ink-4)', color: 'var(--fog-2)',
-            fontSize: 12, opacity: dbLoading ? 0.5 : 1,
+            padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg)', color: 'var(--txt2)',
+            fontSize: 12, boxShadow: 'var(--shadow-sm)',
+            opacity: dbLoading ? 0.5 : 1,
           }}
         >
           <RefreshCw size={14} style={{ animation: dbLoading ? 'spin 1s linear infinite' : 'none' }} />
@@ -84,21 +94,25 @@ export function Topbar({ onSearch, onSettings, onExport }: Props) {
           onClick={onSettings}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 10px', borderRadius: 'var(--r)',
-            background: 'var(--ink-4)', color: 'var(--fog-2)',
-            fontSize: 12,
+            padding: '7px 12px', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg)', color: 'var(--txt2)',
+            fontSize: 13, fontWeight: 600, boxShadow: 'var(--shadow-sm)',
           }}
         >
           <Settings size={14} />
+          <span>Einstellungen</span>
         </button>
         <button
           onClick={onExport}
           disabled={jobs.length === 0}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '7px 12px', borderRadius: 'var(--r)',
-            background: 'var(--ink-4)', color: jobs.length ? 'var(--fog-2)' : 'var(--fog)',
-            fontSize: 12, fontWeight: 500, opacity: jobs.length ? 1 : 0.5,
+            padding: '7px 12px', borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg)', color: jobs.length ? 'var(--txt2)' : 'var(--txt3)',
+            fontSize: 13, fontWeight: 600,
+            boxShadow: 'var(--shadow-sm)', opacity: jobs.length ? 1 : 0.5,
           }}
         >
           <Download size={14} /> CSV
@@ -108,11 +122,13 @@ export function Topbar({ onSearch, onSettings, onExport }: Props) {
           disabled={isRunning}
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 18px', borderRadius: 'var(--r)',
-            background: isRunning ? 'var(--ink-4)' : 'var(--gold)',
-            color: isRunning ? 'var(--fog)' : 'var(--ink)',
-            fontSize: 13, fontWeight: 700, letterSpacing: '0.2px',
-            opacity: isRunning ? 0.7 : 1,
+            padding: '9px 18px', borderRadius: 'var(--radius-sm)',
+            border: 'none',
+            background: isRunning ? 'var(--bg3)' : 'var(--accent)',
+            color: isRunning ? 'var(--txt3)' : '#fff',
+            fontSize: 13.5, fontWeight: 600, letterSpacing: '0.2px',
+            boxShadow: isRunning ? 'none' : '0 4px 12px -3px rgba(79,70,229,.5)',
+            opacity: isRunning ? 0.75 : 1,
           }}
         >
           <Search size={15} strokeWidth={2.5} />

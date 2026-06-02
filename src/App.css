@@ -1,1 +1,15 @@
-/* App-level styles — main design handled in index.css and component inline styles */
+/* App-level styles — design tokens defined in index.css */
+
+/* Progress bar animation */
+@keyframes prog {
+  0%   { width: 0; opacity: 1; }
+  80%  { width: 90%; }
+  100% { width: 100%; opacity: .6; }
+}
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* Toaster override for light theme */
+.react-hot-toast { font-family: var(--font) !important; }
