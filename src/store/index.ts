@@ -76,8 +76,8 @@ export const useStore = create<AppState>()(
         const merged = deduplicateJobs([...state.jobs, ...newJobs])
         const mergedLog = [...state.searchLog]
         log.forEach(l => {
-          const existing = mergedLog.find(e => e.quelle === l.quelle)
-          if (existing) existing.anzahl += l.anzahl
+          const idx = mergedLog.findIndex(e => e.quelle === l.quelle)
+          if (idx >= 0) mergedLog[idx] = l  // replace, don't accumulate
           else mergedLog.push(l)
         })
         return { jobs: merged, searchLog: mergedLog, lastSearchAt: new Date().toISOString() }

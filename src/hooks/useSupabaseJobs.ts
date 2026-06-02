@@ -1,8 +1,7 @@
 /**
- * Loads jobs from Supabase on mount.
- * - Includes jobs crawled by the Intelligence Backend
- * - Persists across page refreshes
- * - Merges into the same Zustand store as the manual search
+ * Loads jobs from Supabase (Intelligence Crawler results).
+ * Replaces the store's supabase-sourced jobs on each load
+ * rather than merging/deduplicating — keeps count accurate.
  */
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -10,7 +9,7 @@ import { useStore } from '../store'
 import { classifyJob } from '../lib/utils'
 import type { Job, SearchLog } from '../types'
 
-const SUPABASE_LOAD_LIMIT = 200
+const SUPABASE_LOAD_LIMIT = 1000
 
 function mapRow(row: any): Job {
   return {
@@ -30,8 +29,8 @@ function mapRow(row: any): Job {
 
 export function useSupabaseJobs() {
   const { mergeJobs } = useStore()
-  const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [dbCount, setDbCount] = useState(0)
 
   const loadFromSupabase = async () => {
     setLoading(true)
@@ -39,21 +38,25 @@ export function useSupabaseJobs() {
       const { data, error } = await supabase
         .from('jobs')
         .select('*')
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(SUPABASE_LOAD_LIMIT)
 
       if (error) throw error
-      if (!data?.length) return
+      const count = data?.length || 0
+      setDbCount(count)
+      if (!count) return
 
-      const mapped: Job[] = data.map(mapRow)
+      const mapped: Job[] = data!.map(mapRow)
+
+      // Replace the supabase log entry (don't accumulate)
       const log: SearchLog[] = [{
         quelle: 'Supabase (Intelligence Crawler)',
-        anzahl: mapped.length,
+        anzahl: count,
         ms: 0,
         ok: true,
       }]
       mergeJobs(mapped, log)
-      setLoaded(true)
     } catch (e) {
       console.warn('Supabase load failed:', e)
     } finally {
@@ -61,12 +64,12 @@ export function useSupabaseJobs() {
     }
   }
 
-  // Always load from Supabase on mount + every 5 minutes
+  // Load on mount + auto-refresh every 5 minutes
   useEffect(() => {
     loadFromSupabase()
     const iv = setInterval(loadFromSupabase, 5 * 60 * 1000)
     return () => clearInterval(iv)
   }, [])
 
-  return { loadFromSupabase, loaded, loading }
+  return { loadFromSupabase, loading, dbCount }
 }
