@@ -16,10 +16,13 @@ from core import queue as Q
 
 log = logging.getLogger(__name__)
 
-JOB_KEYWORDS = re.compile(
-    r"projekt|project|design|interior|retail|store|shop|workplace|"
-    r"architektur|architect|innenarchitekt|concept|brand|visual|display|"
-    r"manager|leitung|direktor|director|head of",
+# No keyword filter — let ALL jobs through, scoring decides relevance
+JOB_KEYWORDS = re.compile(r".", re.I)  # matches everything
+
+# Jobs to explicitly exclude (generic admin/IT roles)
+EXCLUDE_KEYWORDS = re.compile(
+    r"buchhalter|fahrer|lkw|lager|reinigung|küche|koch|"
+    r"software.?engineer|developer|devops|sysadmin|datenbankadmin",
     re.I
 )
 
@@ -50,7 +53,9 @@ def _parse_json_ld(html: str, company_name: str, city: str) -> list[dict]:
                 if not item or item.get("@type") != "JobPosting":
                     continue
                 title = item.get("title", "")
-                if not title or not JOB_KEYWORDS.search(title):
+                if not title:
+                    continue
+                if EXCLUDE_KEYWORDS.search(title):
                     continue
                 jobs.append({
                     "title": title,
@@ -88,7 +93,7 @@ def _parse_next_data(html: str, company_name: str, city: str) -> list[dict]:
             if isinstance(val, list) and val:
                 for item in val:
                     title = item.get("title") or item.get("jobTitle") or item.get("name") or ""
-                    if not title or not JOB_KEYWORDS.search(title):
+                    if not title or EXCLUDE_KEYWORDS.search(title):
                         continue
                     jobs.append({
                         "title": title,
@@ -113,7 +118,7 @@ def _parse_link_scan(html: str, base_url: str, company_name: str, city: str) -> 
         txt = a.get_text(strip=True)
         if not txt or len(txt) < 5 or len(txt) > 120:
             continue
-        if not JOB_KEYWORDS.search(txt):
+        if EXCLUDE_KEYWORDS.search(txt):
             continue
         href = a["href"]
         if not href.startswith("http"):
