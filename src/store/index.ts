@@ -40,6 +40,7 @@ interface AppState {
 
   // Actions
   mergeJobs: (newJobs: Job[], log: SearchLog[]) => void
+  setJobs: (jobs: Job[], log: SearchLog[]) => void
   setSearchPhase: (phase: SearchPhase) => void
   clearJobs: () => void
   toggleFavorite: (jobId: string) => void
@@ -82,6 +83,8 @@ export const useStore = create<AppState>()(
         })
         return { jobs: merged, searchLog: mergedLog, lastSearchAt: new Date().toISOString() }
       }),
+
+      setJobs: (jobs, log) => set({ jobs, searchLog: log, lastSearchAt: new Date().toISOString() }),
 
       setSearchPhase: phase => set({ searchPhase: phase }),
 
@@ -153,9 +156,7 @@ export const useStore = create<AppState>()(
         favorites: Array.from(state.favorites),
         notes: state.notes,
         config: state.config,
-        jobs: state.jobs,
-        searchLog: state.searchLog,
-        lastSearchAt: state.lastSearchAt,
+        // Jobs are NOT persisted — always loaded fresh from Supabase on startup
       }),
       onRehydrateStorage: () => state => {
         if (state && Array.isArray((state as any).favorites)) {

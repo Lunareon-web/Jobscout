@@ -28,7 +28,7 @@ function mapRow(row: any): Job {
 }
 
 export function useSupabaseJobs() {
-  const { mergeJobs } = useStore()
+  const { setJobs, mergeJobs } = useStore()
   const [loading, setLoading] = useState(false)
   const [dbCount, setDbCount] = useState(0)
 
@@ -49,14 +49,14 @@ export function useSupabaseJobs() {
 
       const mapped: Job[] = data!.map(mapRow)
 
-      // Replace the supabase log entry (don't accumulate)
+      // REPLACE jobs entirely — don't merge/dedup with stale localStorage data
       const log: SearchLog[] = [{
         quelle: 'Supabase (Intelligence Crawler)',
         anzahl: count,
         ms: 0,
         ok: true,
       }]
-      mergeJobs(mapped, log)
+      setJobs(mapped, log)
     } catch (e) {
       console.warn('Supabase load failed:', e)
     } finally {

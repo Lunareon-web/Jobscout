@@ -23,7 +23,7 @@ export function useSearch() {
   const { config, setSearchPhase, mergeJobs, clearJobs } = useStore()
 
   const startSearch = useCallback(async () => {
-    clearJobs()
+    // Don't clear — keep Supabase crawler jobs, merge manual results on top
     setSearchPhase('fast')
 
     const params = {
