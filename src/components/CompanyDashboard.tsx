@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Building2, Star, Briefcase, Users, TrendingUp, ExternalLink, RefreshCw, Zap } from 'lucide-react'
+import { Building2, Briefcase, Users, TrendingUp, ExternalLink, RefreshCw, Zap } from 'lucide-react'
 import { intelligenceApi, type Company, type Stats } from '../lib/intelligence-api'
 
 const PRIORITY_COLOR: Record<string, string> = {
