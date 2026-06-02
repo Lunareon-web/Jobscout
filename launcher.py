@@ -44,11 +44,12 @@ def start():
     if _is_running():
         return {"ok": False, "msg": "Already running", "pid": _process.pid}
 
+    log_file = open(BASE_DIR / "backend.log", "a", encoding="utf-8")
     _process = subprocess.Popen(
         [str(VENV_PYTHON), "-m", "uvicorn", "main:app", "--port", "8000", "--host", "0.0.0.0"],
         cwd=str(BASE_DIR),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=log_file,
+        stderr=log_file,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
     return {"ok": True, "msg": "Backend gestartet", "pid": _process.pid}
@@ -77,23 +78,16 @@ def stop():
 
 @app.get("/logs")
 def logs():
-    """Letzte 50 Zeilen aus dem Backend-Prozess."""
-    if not _is_running() or _process.stdout is None:
-        return {"lines": []}
-    lines = []
-    # Non-blocking read
-    import select
+    """Letzte 80 Zeilen aus backend.log."""
+    log_path = BASE_DIR / "backend.log"
+    if not log_path.exists():
+        return {"lines": ["(noch keine Logs)"]}
     try:
-        while True:
-            line = _process.stdout.readline()
-            if not line:
-                break
-            lines.append(line.decode("utf-8", errors="replace").rstrip())
-            if len(lines) >= 50:
-                break
-    except Exception:
-        pass
-    return {"lines": lines[-50:]}
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        return {"lines": [l.rstrip() for l in lines[-80:]]}
+    except Exception as e:
+        return {"lines": [f"Fehler: {e}"]}
 
 
 if __name__ == "__main__":
