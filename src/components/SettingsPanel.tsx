@@ -10,9 +10,9 @@ const DEFAULT_JOBTITEL = [
   'Brand Designer', 'Visual Merchandiser',
 ]
 
-const label = (text: string): React.CSSProperties => ({
+const labelStyle: React.CSSProperties = {
   fontSize: 12.5, color: 'var(--txt2)', marginBottom: 6, fontWeight: 500, display: 'block',
-})
+}
 
 const sectionStyle: React.CSSProperties = {
   background: 'var(--bg)', border: '1px solid var(--border)',
@@ -67,15 +67,15 @@ export function SettingsPanel() {
         {sectionTitle(<CheckCircle size={17} />, 'Suchparameter')}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label>
-            <span style={label('x')}>Standort</span>
+            <span style={labelStyle}>Standort</span>
             <input value={config.standort} onChange={e => setConfig({ standort: e.target.value })} placeholder="Düsseldorf" />
           </label>
           <label>
-            <span style={label('x')}>Umkreis (km)</span>
+            <span style={labelStyle}>Umkreis (km)</span>
             <input type="number" min={10} max={150} value={config.umkreis} onChange={e => setConfig({ umkreis: parseInt(e.target.value) || 50 })} />
           </label>
           <label>
-            <span style={label('x')}>Max. Alter (Tage)</span>
+            <span style={labelStyle}>Max. Alter (Tage)</span>
             <input type="number" min={1} max={30} value={config.maxTage} onChange={e => setConfig({ maxTage: parseInt(e.target.value) || 15 })} />
           </label>
         </div>
