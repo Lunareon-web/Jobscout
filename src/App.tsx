@@ -8,6 +8,7 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { LogPanel } from './components/LogPanel'
 import CompanyDashboard from './components/CompanyDashboard'
 import IntelligenceFeed from './components/IntelligenceFeed'
+import ServerControl from './components/ServerControl'
 import { useSearch } from './hooks/useSearch'
 import { useSupabaseJobs } from './hooks/useSupabaseJobs'
 import { useStore } from './store'
@@ -129,7 +130,12 @@ export default function App() {
 
           {activeTab==='log' && <LogPanel />}
           {activeTab==='sources' && <SourcesPanel />}
-          {activeTab==='settings' && <SettingsPanel />}
+          {activeTab==='settings' && (
+            <div style={{display:'flex',gap:24,flexWrap:'wrap',alignItems:'flex-start'}}>
+              <SettingsPanel />
+              <ServerControl />
+            </div>
+          )}
           {activeTab==='companies' && (
             <div style={{height:'calc(100vh - 92px)',overflow:'hidden',margin:'-20px -24px'}}>
               <CompanyDashboard />
