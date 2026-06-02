@@ -158,7 +158,7 @@ async def run(company_id: str) -> int:
     company = db.table("companies").select("*").eq("id", company_id).single().execute()
     if not company.data:
         return 0
-    c = company.data
+    c = company.data[0]
 
     pages = db.table("career_pages").select("*").eq("company_id", company_id).execute()
     if not pages.data:

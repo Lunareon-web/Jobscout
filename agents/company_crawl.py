@@ -43,7 +43,7 @@ async def run(company_id: str) -> bool:
         log.warning(f"Company not found: {company_id}")
         return False
 
-    c = company.data
+    c = company.data[0]
     base = c["website"].rstrip("/")
     log.info(f"Enriching company: {c['name']}")
 
