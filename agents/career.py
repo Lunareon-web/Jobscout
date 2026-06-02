@@ -250,8 +250,7 @@ async def run(company_id: str) -> int:
         jobs = _parse_json_ld(html, c["name"], c["city"])
         if not jobs:
             jobs = _parse_next_data(html, c["name"], c["city"])
-        if not jobs:
-            jobs = _parse_link_scan(html, url, c["name"], c["city"])
+        # Link-Scan deaktiviert — zu viele Falsch-Positive (Produkt-/Navigationsseiten)
 
         # Deduplicate + save
         page_new = 0
