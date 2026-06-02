@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:        #0d0d0d;
+  --ink-2:      #141414;
+  --ink-3:      #1e1e1e;
+  --ink-4:      #2a2a2a;
+  --ink-5:      #363636;
+  --fog:        #7a7a7a;
+  --fog-2:      #a8a8a8;
+  --paper:      #f0ede6;
+  --paper-dim:  #8a8780;
+  --gold:       #c9a84c;
+  --gold-dim:   rgba(201,168,76,0.15);
+  --gold-glow:  rgba(201,168,76,0.07);
+  --green:      #52a870;
+  --green-dim:  rgba(82,168,112,0.12);
+  --red:        #d95555;
+  --red-dim:    rgba(217,85,85,0.12);
+  --blue:       #5a96f0;
+  --cat-design:    #b07ef0;
+  --cat-design-dim:rgba(176,126,240,0.12);
+  --cat-interior:  #38c99a;
+  --cat-interior-dim:rgba(56,201,154,0.12);
+  --cat-arch:     #f08c3a;
+  --cat-arch-dim: rgba(240,140,58,0.12);
+  --cat-mgmt:     #5a96f0;
+  --cat-mgmt-dim: rgba(90,150,240,0.12);
+  --font: 'Syne', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --r:    8px;
+  --r-lg: 14px;
+  --ease: cubic-bezier(0.16,1,0.3,1);
+}
+
+html { scroll-behavior: smooth; }
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--ink-2); }
+::-webkit-scrollbar-thumb { background: var(--ink-5); border-radius: 3px; }
+::selection { background: var(--gold-dim); color: var(--gold); }
+input, select, textarea {
+  font-family: var(--font); font-size: 13px; color: var(--paper);
+  background: var(--ink-3); border: 1px solid var(--ink-5); border-radius: var(--r);
+  padding: 8px 12px; width: 100%; outline: none;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+  appearance: none;
+}
+input::placeholder, textarea::placeholder { color: var(--fog); }
+input:focus, select:focus, textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-glow); }
+button { font-family: var(--font); cursor: pointer; border: none; outline: none; transition: all 150ms var(--ease); }
+button:active { transform: scale(0.97); }
+a { color: inherit; text-decoration: none; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
