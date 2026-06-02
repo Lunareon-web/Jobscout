@@ -29,7 +29,7 @@ function mapRow(row: any): Job {
 }
 
 export function useSupabaseJobs() {
-  const { mergeJobs, jobs } = useStore()
+  const { mergeJobs } = useStore()
   const [loaded, setLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
 
