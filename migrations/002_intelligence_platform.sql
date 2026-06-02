@@ -184,7 +184,7 @@ on conflict (website) do nothing;
 
 -- Seed career_pages für migrierte Firmen
 insert into career_pages (company_id, url)
-select c.id, cp.url from companies c
+select c.id, cp.career_url from companies c
 join (values
   ('https://www.hpp.com',                  'https://www.hpp.com/de/karriere/'),
   ('https://www.rkw-architektur.de',       'https://www.rkw-architektur.de/buero/karriere/'),
