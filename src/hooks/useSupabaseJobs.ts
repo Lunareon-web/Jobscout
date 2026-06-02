@@ -28,7 +28,7 @@ function mapRow(row: any): Job {
 }
 
 export function useSupabaseJobs() {
-  const { setJobs, mergeJobs } = useStore()
+  const { setJobs } = useStore()
   const [loading, setLoading] = useState(false)
   const [dbCount, setDbCount] = useState(0)
 
