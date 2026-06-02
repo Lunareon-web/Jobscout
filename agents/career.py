@@ -193,6 +193,56 @@ JS_RENDERED_DOMAINS = {
 }
 
 
+# Nur Titel mit diesen harten Indikatoren gelten als echte Jobs
+HARD_JOB_RE = re.compile(
+    r"\(m/w/d\)|\(w/m/d\)|\(gn\)|\(f/m/d\)|"
+    r"vollzeit|teilzeit|festanstellung|"
+    r"werkstudent\w*|praktikant\w*|trainee",
+    re.I
+)
+
+
+def _parse_strict_link_scan(html: str, base_url: str, company_name: str, city: str) -> list[dict]:
+    """
+    Nur Links mit (m/w/d) oder anderen harten Job-Indikatoren im Titel.
+    Sehr konservativ — lieber nichts als Falsch-Positive.
+    """
+    jobs = []
+    soup = BeautifulSoup(html, "lxml")
+    seen = set()
+
+    # Navigation/Header/Footer entfernen
+    for tag in soup.find_all(['header', 'footer', 'nav', 'script', 'style']):
+        tag.decompose()
+
+    for a in soup.find_all("a", href=True):
+        txt = a.get_text(strip=True)
+        if not txt or len(txt) < 10 or len(txt) > 120:
+            continue
+        # MUSS harten Job-Indikator enthalten
+        if not HARD_JOB_RE.search(txt):
+            continue
+        href = a["href"]
+        if not href.startswith("http"):
+            from urllib.parse import urljoin
+            href = urljoin(base_url, href)
+        if href in seen:
+            continue
+        seen.add(href)
+        jobs.append({
+            "title": txt,
+            "company": company_name,
+            "city": city,
+            "date": "",
+            "url": href,
+            "description": "",
+            "employment_type": "",
+        })
+        if len(jobs) >= 30:
+            break
+    return jobs
+
+
 async def _fetch_html(url: str) -> str:
     domain = re.search(r"https?://([^/]+)", url)
     dom = domain.group(1) if domain else ""
@@ -251,7 +301,9 @@ async def run(company_id: str) -> int:
         jobs = _parse_json_ld(html, c["name"], c["city"])
         if not jobs:
             jobs = _parse_next_data(html, c["name"], c["city"])
-        # Link-Scan deaktiviert — zu viele Falsch-Positive (Produkt-/Navigationsseiten)
+        # Strategie 3: Strenger Link-Scan (nur (m/w/d) Titel)
+        if not jobs:
+            jobs = _parse_strict_link_scan(html, url, c["name"], c["city"])
 
         # Validate + save
         page_new = 0
