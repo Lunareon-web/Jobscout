@@ -21,8 +21,11 @@ JOB_KEYWORDS = re.compile(r".", re.I)  # matches everything
 
 # Jobs to explicitly exclude (generic admin/IT roles)
 EXCLUDE_KEYWORDS = re.compile(
-    r"buchhalter|fahrer|lkw|lager|reinigung|küche|koch|"
-    r"software.?engineer|developer|devops|sysadmin|datenbankadmin",
+    r"buchhalter|fahrer|lkw|lager|reinigung|küche|koch|hausmeister|"
+    r"montage|monteur|versand|logistik|kommissionier|fertigung|produktion|"
+    r"software.?engineer|developer|devops|sysadmin|datenbankadmin|"
+    r"^contact$|^about|^home$|^team$|what.s new|news$|^jobs$|^karriere$|"
+    r"ferienarbeit|praktikum.?schüler|aushilf",
     re.I
 )
 
@@ -175,11 +178,38 @@ def _parse_link_scan(html: str, base_url: str, company_name: str, city: str) -> 
     return jobs
 
 
+KNOWN_ATS_APIS: dict[str, str] = {
+    # domain → API endpoint template (use {domain} as placeholder)
+    "greenhouse.io":      "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
+    "lever.co":           "https://api.lever.co/v0/postings/{slug}?mode=json",
+    "personio.de":        "",  # no public API
+    "smartrecruiters.com": "https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+}
+
+JS_RENDERED_DOMAINS = {
+    "karriere.douglas.de", "jobs.metro.com", "karriere.lindner.de",
+    "karriere.peek-cloppenburg.de",
+}
+
+
 async def _fetch_html(url: str) -> str:
+    domain = re.search(r"https?://([^/]+)", url)
+    dom = domain.group(1) if domain else ""
+
+    # Skip known JS-rendered pages (would return empty shell)
+    if any(d in dom for d in JS_RENDERED_DOMAINS):
+        log.info(f"  Skipping JS-rendered page: {url}")
+        return ""
+
     try:
-        async with httpx.AsyncClient(timeout=15, headers=HEADERS, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=20, headers=HEADERS, follow_redirects=True) as client:
             r = await client.get(url)
-            return r.text if r.status_code < 400 else ""
+            if r.status_code >= 400:
+                return ""
+            # Check if page has meaningful content (not SPA shell)
+            if len(r.text) < 2000:
+                return ""
+            return r.text
     except Exception as e:
         log.warning(f"Fetch error {url}: {e}")
         return ""
