@@ -27,12 +27,13 @@ def enqueue(entity_type: str, entity_id: str | None = None,
     db = get_db()
     prio = priority or PRIORITY.get(entity_type, 5)
     next_run = datetime.utcnow() + timedelta(seconds=delay_seconds)
+
     row = {
         "entity_type": entity_type,
         "entity_id": str(entity_id) if entity_id else None,
         "priority": prio,
         "status": "pending",
-        "next_run": next_run.isoformat(),
+        "next_run": next_run.isoformat() + "Z",
     }
     res = db.table("crawl_queue").insert(row).execute()
     return res.data[0] if res.data else {}
@@ -41,7 +42,7 @@ def enqueue(entity_type: str, entity_id: str | None = None,
 def pop_next() -> dict | None:
     """Fetch and lock the next pending item."""
     db = get_db()
-    now = datetime.utcnow().isoformat()
+    now = datetime.utcnow().isoformat() + "Z"
     res = (
         db.table("crawl_queue")
         .select("*")
