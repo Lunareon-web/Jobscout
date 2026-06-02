@@ -54,6 +54,6 @@ export interface SearchHistoryEntry {
   created_at: string
 }
 
-export type SortOption = 'date' | 'title' | 'company' | 'source' | 'favorites'
+export type SortOption = 'date' | 'title' | 'company' | 'source' | 'favorites' | 'score'
 export type FilterCategory = 'all' | JobCategory | 'direkt'
 export type SearchPhase = 'idle' | 'fast' | 'portals' | 'firmen' | 'done' | 'error'

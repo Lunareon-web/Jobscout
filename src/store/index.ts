@@ -131,6 +131,7 @@ export const useStore = create<AppState>()(
           case 'company': src.sort((a, b) => a.unternehmen.localeCompare(b.unternehmen, 'de')); break
           case 'source':  src.sort((a, b) => a.quelle.localeCompare(b.quelle, 'de')); break
           case 'favorites': src.sort((a, b) => Number(favorites.has(b.id)) - Number(favorites.has(a.id))); break
+          case 'score':    src.sort((a, b) => ((b as any).score || 0) - ((a as any).score || 0)); break
         }
 
         return src
@@ -152,6 +153,9 @@ export const useStore = create<AppState>()(
         favorites: Array.from(state.favorites),
         notes: state.notes,
         config: state.config,
+        jobs: state.jobs,
+        searchLog: state.searchLog,
+        lastSearchAt: state.lastSearchAt,
       }),
       onRehydrateStorage: () => state => {
         if (state && Array.isArray((state as any).favorites)) {

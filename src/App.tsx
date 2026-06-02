@@ -9,6 +9,7 @@ import { LogPanel } from './components/LogPanel'
 import CompanyDashboard from './components/CompanyDashboard'
 import IntelligenceFeed from './components/IntelligenceFeed'
 import { useSearch } from './hooks/useSearch'
+import { useSupabaseJobs } from './hooks/useSupabaseJobs'
 import { useStore } from './store'
 import { formatDate } from './lib/utils'
 import './App.css'
@@ -18,6 +19,7 @@ const PER_PAGE = 25
 export default function App() {
   const [activeTab, setActiveTab] = useState('results')
   const { startSearch } = useSearch()
+  const { loadFromSupabase, loading: supabaseLoading } = useSupabaseJobs()
   const { jobs, favorites, notes, searchPhase, currentPage, setCurrentPage, getFilteredJobs } = useStore()
 
   const handleSearch = useCallback(async () => {
@@ -81,9 +83,14 @@ export default function App() {
                   <p style={{fontSize:14,color:'var(--fog)',maxWidth:380,margin:'0 auto 24px',lineHeight:1.7}}>
                     Durchsucht <strong style={{color:'var(--paper)'}}>BA-API + RSS-Feeds + 20 Firmenseiten</strong> parallel in 3 Stufen.
                   </p>
-                  <button onClick={handleSearch} style={{padding:'12px 28px',borderRadius:'var(--r)',background:'var(--gold)',color:'var(--ink)',fontSize:14,fontWeight:700}}>
-                    Suche starten
-                  </button>
+                  <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+                    <button onClick={handleSearch} style={{padding:'12px 28px',borderRadius:'var(--r)',background:'var(--gold)',color:'var(--ink)',fontSize:14,fontWeight:700}}>
+                      Suche starten
+                    </button>
+                    <button onClick={loadFromSupabase} disabled={supabaseLoading} style={{padding:'12px 28px',borderRadius:'var(--r)',background:'var(--ink-4)',color:'var(--paper)',fontSize:14,fontWeight:600,opacity:supabaseLoading?0.6:1}}>
+                      {supabaseLoading ? 'Lade…' : '🗄 Aus Datenbank laden'}
+                    </button>
+                  </div>
                 </div>
               )}
 

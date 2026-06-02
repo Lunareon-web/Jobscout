@@ -14,6 +14,7 @@ const CATEGORIES: { id: FilterCategory; label: string; icon: React.ReactNode; co
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'date',      label: 'Neueste zuerst' },
+  { value: 'score',     label: '⭐ Score (Intelligence)' },
   { value: 'title',     label: 'Titel A–Z' },
   { value: 'company',   label: 'Firma A–Z' },
   { value: 'source',    label: 'Nach Quelle' },
