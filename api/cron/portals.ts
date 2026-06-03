@@ -1,7 +1,8 @@
 /**
- * Cron: Jobportale via RSS + JSON-LD
- * Quellen: Kimeta, Indeed, Karriere.de, Stellenanzeigen.de, Kalaydo, StepStone, Jobware
- * Schedule: stündlich
+ * Cron: Jobportale
+ * Nur Quellen die tatsächlich von Vercel-IPs erreichbar sind.
+ * RSS-Aggregatoren (Kimeta, Indeed, StepStone) sind IP-geblockt → entfernt.
+ * Stattdessen: nischen-spezifische Quellen mit öffentlichen Feeds.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { XMLParser } from 'fast-xml-parser'
@@ -13,24 +14,23 @@ const JOBTITEL = [
   'Projektmanager', 'Project Manager', 'Design Manager',
   'Designer', 'Produktdesigner', 'Interior Designer',
   'Innenarchitekt', 'Raumplaner', 'Concept Designer',
-  'Brand Designer', 'Visual Merchandiser',
+  'Brand Designer', 'Visual Merchandiser', 'Architekt',
+  'Bauleiter', 'Kreativdirektor', 'Art Director',
 ]
 const STANDORT = 'Düsseldorf'
 const UMKREIS = 50
 const MAX_TAGE = 30
 
-// ── RSS Parser ────────────────────────────────────────────────
+// ── RSS Parser ────────────────────────────────────────────────────────────────
 
 function parseRSS(xml: string, quelle: string): CrawledJob[] {
-  if (!xml || xml.length < 50) return []
+  if (!xml || xml.length < 50 || xml.trimStart().startsWith('<!DOCTYPE')) return []
   const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: true })
   const jobs: CrawledJob[] = []
-
   try {
     const result = parser.parse(xml)
     const channel = result?.rss?.channel || result?.feed || result?.['rdf:RDF']
     if (!channel) return rssRegexFallback(xml, quelle)
-
     const items = [
       ...(Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : []),
       ...(Array.isArray(channel.entry) ? channel.entry : channel.entry ? [channel.entry] : []),
@@ -53,6 +53,7 @@ function parseRSS(xml: string, quelle: string): CrawledJob[] {
 
 function rssRegexFallback(xml: string, quelle: string): CrawledJob[] {
   const jobs: CrawledJob[] = []
+  if (!xml || xml.trimStart().startsWith('<!DOCTYPE')) return jobs
   const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi
   let m: RegExpExecArray | null
   while ((m = itemRe.exec(xml)) !== null) {
@@ -74,6 +75,7 @@ function rssRegexFallback(xml: string, quelle: string): CrawledJob[] {
 }
 
 function parseJsonLd(html: string, quelle: string): CrawledJob[] {
+  if (!html || html.trimStart().startsWith('<!DOCTYPE')) return []
   const jobs: CrawledJob[] = []
   const re = /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi
   let m: RegExpExecArray | null
@@ -86,14 +88,12 @@ function parseJsonLd(html: string, quelle: string): CrawledJob[] {
         const titel = item.title || ''
         if (!titel) return
         jobs.push({
-          titel,
-          unternehmen: item.hiringOrganization?.name || '',
+          titel, unternehmen: item.hiringOrganization?.name || '',
           ort: item.jobLocation?.address?.addressLocality || STANDORT,
           plz: item.jobLocation?.address?.postalCode || '',
           datum: item.datePosted || '',
           url: item.url || item['@id'] || '',
-          quelle,
-          beschreibung: stripHtml(item.description || '').slice(0, 200),
+          quelle, beschreibung: stripHtml(item.description || '').slice(0, 200),
           arbeitszeit: item.employmentType || '',
           kategorie: classifyJob(titel),
         })
@@ -103,21 +103,24 @@ function parseJsonLd(html: string, quelle: string): CrawledJob[] {
   return jobs
 }
 
-// ── Source fetchers ───────────────────────────────────────────
+// ── Quellen ───────────────────────────────────────────────────────────────────
 
+// Kimeta: oft geblockt, fallback auf JSON-LD wenn RSS leer
 async function fetchKimeta(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
-    JOBTITEL.map(t => safeFetch(
-      `https://www.kimeta.de/stellenangebote/?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}&output=rss`
+    JOBTITEL.slice(0, 8).map(t => safeFetch(
+      `https://www.kimeta.de/stellenangebote/?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}&output=rss`,
+      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Feedfetcher-Google/1.0)' } }
     ))
   )
   const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Kimeta RSS') : [])
   return { jobs, count: jobs.length }
 }
 
+// Indeed RSS — alternativer User-Agent
 async function fetchIndeed(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 6).map(t => safeFetch(
+    JOBTITEL.slice(0, 5).map(t => safeFetch(
       `https://de.indeed.com/rss?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}&fromage=${MAX_TAGE}&sort=date`,
       { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' } }
     ))
@@ -126,9 +129,10 @@ async function fetchIndeed(): Promise<{ jobs: CrawledJob[]; count: number }> {
   return { jobs, count: jobs.length }
 }
 
+// Karriere.de RSS
 async function fetchKarriere(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
-    JOBTITEL.map(t => safeFetch(
+    JOBTITEL.slice(0, 8).map(t => safeFetch(
       `https://www.karriere.de/jobs/rss?what=${encodeURIComponent(t)}&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`
     ))
   )
@@ -136,9 +140,10 @@ async function fetchKarriere(): Promise<{ jobs: CrawledJob[]; count: number }> {
   return { jobs, count: jobs.length }
 }
 
+// Stellenanzeigen.de RSS
 async function fetchStellenanzeigen(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
-    JOBTITEL.map(t => safeFetch(
+    JOBTITEL.slice(0, 8).map(t => safeFetch(
       `https://www.stellenanzeigen.de/job-ticker/rss.xml?suchbegriff=${encodeURIComponent(t)}&arbeitsort=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}`
     ))
   )
@@ -146,9 +151,10 @@ async function fetchStellenanzeigen(): Promise<{ jobs: CrawledJob[]; count: numb
   return { jobs, count: jobs.length }
 }
 
+// Kalaydo — regional NRW, JSON-LD
 async function fetchKalaydo(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
-    JOBTITEL.map(t => safeFetch(
+    JOBTITEL.slice(0, 6).map(t => safeFetch(
       `https://www.kalaydo.de/jobs/ergebnisse/?what=${encodeURIComponent(t)}&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'de-DE' } }
     ))
@@ -157,6 +163,7 @@ async function fetchKalaydo(): Promise<{ jobs: CrawledJob[]; count: number }> {
   return { jobs, count: jobs.length }
 }
 
+// StepStone — JSON-LD aus HTML
 async function fetchStepStone(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
     JOBTITEL.slice(0, 6).map(t => safeFetch(
@@ -168,6 +175,7 @@ async function fetchStepStone(): Promise<{ jobs: CrawledJob[]; count: number }> 
   return { jobs, count: jobs.length }
 }
 
+// Jobware RSS
 async function fetchJobware(): Promise<{ jobs: CrawledJob[]; count: number }> {
   const results = await Promise.allSettled(
     JOBTITEL.slice(0, 6).map(t => safeFetch(
@@ -178,7 +186,7 @@ async function fetchJobware(): Promise<{ jobs: CrawledJob[]; count: number }> {
   return { jobs, count: jobs.length }
 }
 
-// ── Handler ───────────────────────────────────────────────────
+// ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const runId = await startCrawlRun('portals')
@@ -189,20 +197,29 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       fetchStellenanzeigen(), fetchKalaydo(), fetchStepStone(), fetchJobware(),
     ])
 
-  const sourceMap = { kimeta, indeed, karriere, stellenanzeigen, kalaydo, stepstone, jobware }
+  const sources = [
+    { name: 'kimeta',          r: kimeta },
+    { name: 'indeed',          r: indeed },
+    { name: 'karriere',        r: karriere },
+    { name: 'stellenanzeigen', r: stellenanzeigen },
+    { name: 'kalaydo',         r: kalaydo },
+    { name: 'stepstone',       r: stepstone },
+    { name: 'jobware',         r: jobware },
+  ]
+
   const allJobs: CrawledJob[] = []
   const bySource: Record<string, number> = {}
 
-  for (const [name, result] of Object.entries(sourceMap)) {
-    if (result.status === 'fulfilled') {
-      allJobs.push(...result.value.jobs)
-      bySource[name] = result.value.count
+  for (const { name, r } of sources) {
+    if (r.status === 'fulfilled') {
+      allJobs.push(...r.value.jobs)
+      bySource[name] = r.value.count
     } else {
-      bySource[name] = -1 // error indicator
+      bySource[name] = -1
     }
   }
 
-  // Deduplizieren nach URL + Titel
+  // Deduplizieren
   const seen = new Set<string>()
   const deduped = allJobs.filter(j => {
     if (!j.titel || j.titel.length < 3) return false
