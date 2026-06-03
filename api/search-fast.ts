@@ -50,26 +50,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const jobs: any[] = []
   const log: any[] = []
 
-  // Titelsuche — alle Titel parallel
+  // Titelsuche — alle Titel, 2 Seiten, alle parallel
   const titleRequests = jobtitel.flatMap(titel =>
-    [0, 1].map(page => ({
-      url: `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&size=25&page=${page}`,
-      titel, page,
-    }))
+    [0, 1, 2].map(page => // 3 Seiten statt 2
+      `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&size=25&page=${page}`
+    )
   )
 
   const t0 = Date.now()
   try {
-    const responses = await Promise.all(
-      titleRequests.map(r =>
-        fetch(r.url, { headers: { 'X-API-Key': BA_KEY } })
+    const responses = await Promise.allSettled(
+      titleRequests.map(url =>
+        fetch(url, {
+          headers: { 'X-API-Key': BA_KEY },
+          signal: AbortSignal.timeout(8000),
+        })
           .then(res => res.ok ? res.json() : null)
           .catch(() => null)
       )
     )
-    responses.forEach(data => {
-      if (!data?.stellenangebote) return
-      data.stellenangebote.forEach((s: any) => jobs.push(normalizeBA(s)))
+    responses.forEach(r => {
+      if (r.status === 'fulfilled' && r.value?.stellenangebote) {
+        r.value.stellenangebote.forEach((s: any) => jobs.push(normalizeBA(s)))
+      }
     })
     log.push({ quelle: 'BA Titelsuche', anzahl: jobs.length, ms: Date.now() - t0, ok: true })
   } catch (e) {
