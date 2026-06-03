@@ -12,12 +12,13 @@ log = logging.getLogger(__name__)
 AGENT_MAP = {
     "discovery":         "agents.discovery",
     "validation":        "agents.validation",
-    "company_candidate": "agents.validation",   # alias
+    "company_candidate": "agents.validation",
     "company":           "agents.company_crawl",
     "career_page":       "agents.career",
     "project":           "agents.project_detection",
     "contact":           "agents.contact",
     "scoring":           "agents.scoring",
+    "jobspy":            "agents.jobspy_agent",
 }
 
 

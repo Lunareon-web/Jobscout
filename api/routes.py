@@ -108,6 +108,13 @@ async def run_discovery_now():
     return {"queued": item, "msg": "Discovery agent triggered"}
 
 
+@router.post("/queue/run-jobspy")
+async def run_jobspy_now():
+    """Trigger JobSpy scrape immediately (LinkedIn, Indeed, Glassdoor, Google)."""
+    item = Q.enqueue("jobspy", priority=9)
+    return {"queued": item, "msg": "JobSpy agent triggered — scraping LinkedIn, Indeed, Glassdoor, Google Jobs"}
+
+
 # ── Stats ─────────────────────────────────────────────────────
 
 @router.get("/stats")

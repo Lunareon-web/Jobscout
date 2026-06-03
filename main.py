@@ -25,6 +25,11 @@ scheduler = AsyncIOScheduler()
 
 
 def schedule_jobs():
+    # JobSpy: 1x täglich 06:30 — LinkedIn, Indeed, Glassdoor, Google Jobs
+    scheduler.add_job(
+        lambda: Q.enqueue("jobspy", priority=8),
+        "cron", hour=6, minute=30, id="jobspy_daily"
+    )
     # Discovery: 1x täglich um 06:00
     scheduler.add_job(
         lambda: Q.enqueue("discovery"),

@@ -8,3 +8,4 @@ pydantic-settings
 beautifulsoup4
 lxml
 python-multipart
+python-jobspy
