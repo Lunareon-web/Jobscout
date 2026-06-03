@@ -64,10 +64,10 @@ export function useSupabaseJobs() {
     }
   }
 
-  // Load on mount + auto-refresh every 60 seconds
+  // Load on mount + auto-refresh every 30 seconds
   useEffect(() => {
     loadFromSupabase()
-    const iv = setInterval(loadFromSupabase, 60 * 1000)
+    const iv = setInterval(loadFromSupabase, 30_000)
     return () => clearInterval(iv)
   }, [])
 

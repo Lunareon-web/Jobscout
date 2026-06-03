@@ -3,19 +3,22 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/**/*.ts": {
-      "maxDuration": 60
-    }
+    "api/**/*.ts": { "maxDuration": 60 }
   },
+  "crons": [
+    { "path": "/api/cron/ba",           "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/portals",      "schedule": "0 * * * *"   },
+    { "path": "/api/cron/firmenseiten", "schedule": "0 */4 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/(.*)",     "destination": "/index.html" }
   ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
