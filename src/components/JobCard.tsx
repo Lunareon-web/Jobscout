@@ -105,6 +105,21 @@ export function JobCard({ job }: Props) {
             )}
           </div>
 
+          {/* Gehalt (JobSpy) */}
+          {((job as any).salary_min || (job as any).salary_max) && (
+            <div style={{ marginBottom: 8 }}>
+              <span style={{
+                fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
+                background: '#e7f5ec', color: '#1f7a45', border: '1px solid #bfe6cd',
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+                💶 {(job as any).salary_min && `${((job as any).salary_min / 1000).toFixed(0)}k`}
+                {(job as any).salary_min && (job as any).salary_max && ' – '}
+                {(job as any).salary_max && `${((job as any).salary_max / 1000).toFixed(0)}k €`}
+              </span>
+            </div>
+          )}
+
           {/* Tags */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 13 }}>
             <span style={{

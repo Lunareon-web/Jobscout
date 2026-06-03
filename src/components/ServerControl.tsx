@@ -78,6 +78,13 @@ export default function ServerControl() {
     } catch { setMsg('Backend nicht erreichbar') }
   }
 
+  const runJobSpy = async () => {
+    try {
+      const r = await fetch(`${BACKEND}/api/queue/run-jobspy`, { method: 'POST' })
+      setMsg(r.ok ? 'JobSpy gestartet — LinkedIn, Indeed, Glassdoor, Google Jobs' : 'Backend nicht erreichbar')
+    } catch { setMsg('Backend nicht erreichbar') }
+  }
+
   return (
     <div style={{ minWidth: 280, maxWidth: 340 }}>
       <div style={s.label}>🖥 Server Control</div>
@@ -139,17 +146,28 @@ export default function ServerControl() {
         </div>
       )}
 
-      {/* Discovery */}
+      {/* Discovery + JobSpy */}
       {status?.running && (
-        <button onClick={discovery} style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 6, padding: '9px 0', borderRadius: 'var(--r)', marginBottom: 10,
-          fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          background: 'var(--gold-dim)', color: 'var(--gold)',
-          border: '1px solid rgba(201,168,76,0.2)',
-        }}>
-          <Zap size={13} /> Discovery Agent starten
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+          <button onClick={discovery} style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, padding: '9px 0', borderRadius: 'var(--radius-sm)',
+            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            background: 'var(--accent-soft)', color: 'var(--accent)',
+            border: '1px solid var(--accent-border)',
+          }}>
+            <Zap size={13} /> Discovery Agent
+          </button>
+          <button onClick={runJobSpy} style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 6, padding: '9px 0', borderRadius: 'var(--radius-sm)',
+            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+            background: '#e7f5ec', color: '#1f7a45',
+            border: '1px solid #bfe6cd',
+          }}>
+            <Zap size={13} /> JobSpy — LinkedIn · Indeed · Google
+          </button>
+        </div>
       )}
 
       {/* Message */}
