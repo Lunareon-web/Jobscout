@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && npx vite build",
+    "build": "tsc -b && ./node_modules/.bin/vite build",
     "preview": "vite preview",
     "lint": "eslint ."
   },
