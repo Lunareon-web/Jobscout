@@ -1,224 +1,155 @@
-import { useEffect, useRef, useState } from 'react'
-import { Play, Square, RefreshCw, Zap, Wifi, WifiOff, Terminal } from 'lucide-react'
+import { useState } from 'react'
+import { Play, CheckCircle, XCircle, Loader } from 'lucide-react'
 
-const LAUNCHER = 'http://localhost:8001'
-const BACKEND  = 'http://localhost:8000'
+interface CrawlResult {
+  ok: boolean
+  fetched: number
+  inserted: number
+  error?: string
+}
 
-interface ServerStatus { running: boolean; pid: number | null }
+type Status = 'idle' | 'running' | 'done' | 'error'
 
-const s = {
-  card: (color: string): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', gap: 12,
-    padding: '12px 14px', borderRadius: 'var(--r)',
-    border: `1px solid ${color}33`, background: `${color}0d`,
-    marginBottom: 10,
-  }),
-  btn: (active: boolean, color: string): React.CSSProperties => ({
-    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    gap: 6, padding: '10px 0', borderRadius: 'var(--r)',
-    fontSize: 13, fontWeight: 600, cursor: active ? 'pointer' : 'not-allowed',
-    background: active ? color : 'var(--ink-4)',
-    color: active ? '#fff' : 'var(--fog)',
-    opacity: active ? 1 : 0.5, transition: 'all 0.15s',
-  }),
-  label: { fontSize: 10, color: 'var(--fog)', letterSpacing: '0.6px', textTransform: 'uppercase' as const, marginBottom: 10 },
-  hint: { fontSize: 11, color: 'var(--fog-2)', marginTop: 2 },
+interface SourceState {
+  status: Status
+  result?: CrawlResult
+}
+
+const SOURCES = [
+  { key: 'ba',           label: 'Bundesagentur für Arbeit',  desc: 'BA-API + KldB-Berufsgruppen',              path: '/api/cron/ba' },
+  { key: 'portals',      label: 'Portale',                   desc: 'Kimeta · Indeed · Karriere · StepStone',   path: '/api/cron/portals' },
+  { key: 'firmenseiten', label: 'Firmenseiten direkt',       desc: '20 Unternehmens-Karriereseiten',           path: '/api/cron/firmenseiten' },
+]
+
+async function runCrawler(path: string): Promise<CrawlResult> {
+  const r = await fetch(path, { signal: AbortSignal.timeout(62_000) })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
 }
 
 export default function ServerControl() {
-  const [status, setStatus]       = useState<ServerStatus | null>(null)
-  const [launcherOk, setLauncherOk] = useState<boolean | null>(null)
-  const [loading, setLoading]     = useState(false)
-  const [msg, setMsg]             = useState('')
-  const [logs, setLogs]           = useState<string[]>([])
-  const [showLogs, setShowLogs]   = useState(false)
-  const logRef                    = useRef<HTMLDivElement>(null)
+  const [sources, setSources] = useState<Record<string, SourceState>>(
+    Object.fromEntries(SOURCES.map(s => [s.key, { status: 'idle' as Status }]))
+  )
+  const [running, setRunning] = useState(false)
 
-  const check = async () => {
-    try {
-      const r = await fetch(`${LAUNCHER}/status`, { signal: AbortSignal.timeout(2000) })
-      if (r.ok) { setLauncherOk(true); setStatus(await r.json()); return }
-    } catch {}
-    setLauncherOk(false); setStatus(null)
+  const setSource = (key: string, patch: Partial<SourceState>) =>
+    setSources(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+
+  const startAll = async () => {
+    setRunning(true)
+    SOURCES.forEach(s => setSource(s.key, { status: 'running', result: undefined }))
+
+    await Promise.allSettled(
+      SOURCES.map(async s => {
+        try {
+          const result = await runCrawler(s.path)
+          setSource(s.key, { status: result.ok ? 'done' : 'error', result })
+        } catch (e) {
+          setSource(s.key, {
+            status: 'error',
+            result: { ok: false, fetched: 0, inserted: 0, error: String(e) },
+          })
+        }
+      })
+    )
+    setRunning(false)
   }
 
-  const fetchLogs = async () => {
-    try {
-      const r = await fetch(`${LAUNCHER}/logs`)
-      if (r.ok) { const d = await r.json(); setLogs(d.lines || []) }
-    } catch {}
-  }
-
-  useEffect(() => { check(); const iv = setInterval(check, 5000); return () => clearInterval(iv) }, [])
-  useEffect(() => {
-    if (!showLogs) return
-    fetchLogs()
-    const iv = setInterval(fetchLogs, 3000)
-    return () => clearInterval(iv)
-  }, [showLogs])
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [logs])
-
-  const action = async (a: 'start' | 'stop') => {
-    setLoading(true); setMsg('')
-    try {
-      const r = await fetch(`${LAUNCHER}/${a}`, { method: 'POST' })
-      const d = await r.json()
-      setMsg(d.msg || '')
-      setTimeout(check, 1000)
-    } catch { setMsg('Launcher nicht erreichbar') }
-    finally { setLoading(false) }
-  }
-
-  const discovery = async () => {
-    try {
-      const r = await fetch(`${BACKEND}/api/queue/run-discovery`, { method: 'POST' })
-      setMsg(r.ok ? 'Discovery Agent gestartet' : 'Backend nicht erreichbar')
-    } catch { setMsg('Backend nicht erreichbar') }
-  }
-
-  const runJobSpy = async () => {
-    try {
-      const r = await fetch(`${BACKEND}/api/queue/run-jobspy`, { method: 'POST' })
-      setMsg(r.ok ? 'JobSpy gestartet — LinkedIn, Indeed, Glassdoor, Google Jobs' : 'Backend nicht erreichbar')
-    } catch { setMsg('Backend nicht erreichbar') }
-  }
+  const totalFetched  = Object.values(sources).reduce((n, s) => n + (s.result?.fetched  ?? 0), 0)
+  const totalInserted = Object.values(sources).reduce((n, s) => n + (s.result?.inserted ?? 0), 0)
+  const anyDone = Object.values(sources).some(s => s.status === 'done' || s.status === 'error')
 
   return (
-    <div style={{ minWidth: 280, maxWidth: 340 }}>
-      <div style={s.label}>🖥 Server Control</div>
-
-      {/* Launcher */}
-      <div style={s.card(launcherOk ? '#22c55e' : '#ef4444')}>
-        {launcherOk
-          ? <Wifi size={16} color="#22c55e" />
-          : <WifiOff size={16} color="#ef4444" />}
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>
-            Launcher {launcherOk ? 'aktiv' : 'nicht erreichbar'}
-          </div>
-          <div style={s.hint}>
-            {launcherOk ? 'localhost:8001' : 'start_launcher.bat ausführen'}
-          </div>
-        </div>
+    <div style={{ minWidth: 300, maxWidth: 380 }}>
+      <div style={{ fontSize: 10, color: 'var(--txt3)', letterSpacing: '.6px', textTransform: 'uppercase', fontWeight: 700, marginBottom: 12 }}>
+        Manueller Crawl
       </div>
 
-      {/* Backend */}
-      {launcherOk && (
-        <div style={s.card(status?.running ? '#3b82f6' : '#6b7280')}>
-          <div style={{
-            width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-            background: status?.running ? '#3b82f6' : '#6b7280',
-            boxShadow: status?.running ? '0 0 6px #3b82f6' : 'none',
-          }} />
+      {/* Source cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        {SOURCES.map(s => {
+          const st = sources[s.key]
+          const borderColor =
+            st.status === 'done'    ? '#bfe6cd' :
+            st.status === 'error'   ? '#fca5a5' :
+            st.status === 'running' ? 'var(--accent-border)' :
+            'var(--border)'
+          const bg =
+            st.status === 'done'    ? '#f0faf4' :
+            st.status === 'error'   ? '#fef2f2' :
+            st.status === 'running' ? 'var(--accent-soft)' :
+            'var(--bg)'
+
+          return (
+            <div key={s.key} style={{ padding: '12px 14px', borderRadius: 'var(--radius)', border: `1px solid ${borderColor}`, background: bg, transition: 'all .2s' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--txt)', marginBottom: 2 }}>{s.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{s.desc}</div>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {st.status === 'idle'    && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--txt3)' }} />}
+                  {st.status === 'running' && <Loader size={15} color="var(--accent)" style={{ animation: 'spin 1s linear infinite' }} />}
+                  {st.status === 'done'    && <CheckCircle size={15} color="#16a34a" />}
+                  {st.status === 'error'   && <XCircle size={15} color="#dc2626" />}
+                </div>
+              </div>
+
+              {st.result && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--txt2)', display: 'flex', gap: 14 }}>
+                  {st.result.ok ? (
+                    <>
+                      <span>Gefunden: <strong>{st.result.fetched}</strong></span>
+                      <span>Neu in DB: <strong style={{ color: '#16a34a' }}>{st.result.inserted}</strong></span>
+                    </>
+                  ) : (
+                    <span style={{ color: '#dc2626' }}>{st.result.error || 'Fehler'}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Summary */}
+      {anyDone && (
+        <div style={{ padding: '10px 14px', borderRadius: 'var(--radius)', background: 'var(--bg2)', border: '1px solid var(--border)', marginBottom: 12, display: 'flex', gap: 20 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>
-              Backend {status?.running ? 'läuft' : 'gestoppt'}
-            </div>
-            <div style={s.hint}>
-              {status?.running ? `localhost:8000 — PID ${status.pid}` : 'localhost:8000 — inaktiv'}
-            </div>
+            <div style={{ fontSize: 10, color: 'var(--txt3)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Gefunden</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--txt)', letterSpacing: '-0.5px' }}>{totalFetched}</div>
           </div>
-          <button onClick={check} style={{ marginLeft: 'auto', color: 'var(--fog)', padding: 4 }}>
-            <RefreshCw size={12} />
-          </button>
+          <div>
+            <div style={{ fontSize: 10, color: 'var(--txt3)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Neu in DB</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#16a34a', letterSpacing: '-0.5px' }}>{totalInserted}</div>
+          </div>
         </div>
       )}
 
-      {/* Start / Stop */}
-      {launcherOk && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-          <button
-            onClick={() => action('start')}
-            disabled={loading || !!status?.running}
-            style={s.btn(!status?.running && !loading, '#16a34a')}
-          >
-            <Play size={13} /> Starten
-          </button>
-          <button
-            onClick={() => action('stop')}
-            disabled={loading || !status?.running}
-            style={s.btn(!!status?.running && !loading, '#dc2626')}
-          >
-            <Square size={13} /> Stoppen
-          </button>
-        </div>
-      )}
-
-      {/* Discovery + JobSpy */}
-      {status?.running && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-          <button onClick={discovery} style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, padding: '9px 0', borderRadius: 'var(--radius-sm)',
-            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-            background: 'var(--accent-soft)', color: 'var(--accent)',
-            border: '1px solid var(--accent-border)',
-          }}>
-            <Zap size={13} /> Discovery Agent
-          </button>
-          <button onClick={runJobSpy} style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, padding: '9px 0', borderRadius: 'var(--radius-sm)',
-            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-            background: '#e7f5ec', color: '#1f7a45',
-            border: '1px solid #bfe6cd',
-          }}>
-            <Zap size={13} /> JobSpy — LinkedIn · Indeed · Google
-          </button>
-        </div>
-      )}
-
-      {/* Message */}
-      {msg && <p style={{ fontSize: 11, color: 'var(--fog)', textAlign: 'center' }}>{msg}</p>}
-
-      {/* Log Toggle */}
-      {launcherOk && (
-        <button onClick={() => setShowLogs(v => !v)} style={{
+      {/* Button */}
+      <button
+        onClick={startAll}
+        disabled={running}
+        style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 6, padding: '7px 0', borderRadius: 'var(--r)', marginBottom: 10,
-          fontSize: 12, cursor: 'pointer',
-          background: 'var(--ink-3)', color: 'var(--fog-2)',
-          border: '1px solid var(--ink-5)',
-        }}>
-          <Terminal size={12} /> {showLogs ? 'Log ausblenden' : 'Log anzeigen'}
-        </button>
-      )}
+          gap: 8, padding: '12px 0', borderRadius: 'var(--radius-sm)',
+          fontSize: 14, fontWeight: 700,
+          cursor: running ? 'not-allowed' : 'pointer',
+          background: running ? 'var(--bg3)' : 'var(--accent)',
+          color: running ? 'var(--txt3)' : '#fff',
+          border: 'none',
+          boxShadow: running ? 'none' : '0 4px 12px -3px rgba(79,70,229,.4)',
+          transition: 'all .2s',
+        }}
+      >
+        {running
+          ? <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> Crawl läuft…</>
+          : <><Play size={15} fill="currentColor" /> Alle Quellen crawlen</>
+        }
+      </button>
 
-      {/* Log Viewer */}
-      {showLogs && (
-        <div ref={logRef} style={{
-          background: '#0a0a0a', borderRadius: 'var(--r)',
-          border: '1px solid var(--ink-5)',
-          height: 220, overflowY: 'auto', padding: '8px 10px',
-          marginBottom: 10, fontFamily: 'monospace', fontSize: 10,
-          lineHeight: 1.6, color: '#a0a0a0',
-        }}>
-          {logs.length === 0
-            ? <span style={{ color: 'var(--fog)' }}>Keine Logs vorhanden</span>
-            : logs.map((line, i) => (
-              <div key={i} style={{
-                color: line.includes('ERROR') ? '#f87171'
-                  : line.includes('WARNING') ? '#fb923c'
-                  : line.includes('INFO') ? '#86efac'
-                  : '#a0a0a0'
-              }}>{line}</div>
-            ))
-          }
-        </div>
-      )}
-
-      {/* Setup hint */}
-      {launcherOk === false && (
-        <div style={{ padding: '10px 12px', background: 'var(--ink-3)', borderRadius: 'var(--r)', border: '1px solid var(--ink-5)', marginTop: 8 }}>
-          <p style={{ fontSize: 11, color: 'var(--gold)', marginBottom: 6, fontWeight: 600 }}>Einmalig starten:</p>
-          <code style={{ fontSize: 11, color: 'var(--paper)', display: 'block', lineHeight: 1.8 }}>
-            cd jobscout-backend<br />
-            start_launcher.bat
-          </code>
-        </div>
-      )}
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
