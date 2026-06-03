@@ -78,17 +78,18 @@ export function Topbar({ onSearch, onSettings, onExport }: Props) {
         <button
           onClick={loadFromSupabase}
           disabled={dbLoading}
-          title="Neue Crawler-Ergebnisse laden"
+          title="Neue Crawler-Ergebnisse laden (auto: 60s)"
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 10px', borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--border)',
-            background: 'var(--bg)', color: 'var(--txt2)',
+            background: dbLoading ? 'var(--accent-soft)' : 'var(--bg)',
+            color: dbLoading ? 'var(--accent)' : 'var(--txt2)',
             fontSize: 12, boxShadow: 'var(--shadow-sm)',
-            opacity: dbLoading ? 0.5 : 1,
           }}
         >
           <RefreshCw size={14} style={{ animation: dbLoading ? 'spin 1s linear infinite' : 'none' }} />
+          {dbLoading ? 'Lade…' : 'DB'}
         </button>
         <button
           onClick={onSettings}
