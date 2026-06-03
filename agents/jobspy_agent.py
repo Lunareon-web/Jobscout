@@ -12,7 +12,7 @@ from core.job_validator import is_real_job
 
 log = logging.getLogger(__name__)
 
-SITES = ["indeed", "linkedin", "glassdoor", "google"]
+SITES = ["linkedin"]  # Indeed=403, Glassdoor/Google brauchen neuere Version
 
 # Felder die aus jobspy kommen
 JOBSPY_QUELLE = {
@@ -83,10 +83,8 @@ async def run() -> int:
                     search_term=t,
                     location=f"{standort}, Deutschland",
                     distance=umkreis_km,
-                    results_wanted=40,
-                    hours_old=15,
+                    results_wanted=50,
                     country_indeed="germany",
-                    verbose=0,
                 )
             )
         except Exception as e:
