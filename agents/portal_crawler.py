@@ -176,24 +176,16 @@ async def run() -> int:
     log.info("=== Portal Crawler (Crawl4AI, Thread-basiert) gestartet ===")
     total = 0
 
-    # Jobtitel × Portale — parallel in Batches à 3 (Browser-RAM schonen)
-    tasks = [
-        (portal, titel)
-        for titel in JOBTITEL
-        for portal in PORTALE
-    ]
-
-    BATCH = 3
-    for i in range(0, len(tasks), BATCH):
-        batch = tasks[i:i+BATCH]
-        results = await asyncio.gather(
-            *[_crawl_portal(p, t) for p, t in batch],
-            return_exceptions=True
-        )
-        for r in results:
-            if isinstance(r, int):
-                total += r
-        await asyncio.sleep(1)
+    # Sequenziell: ein Portal-Crawl nach dem anderen
+    # Verhindert Ollama-Überlastung bei parallelen Anfragen
+    for titel in JOBTITEL:
+        for portal in PORTALE:
+            try:
+                saved = await _crawl_portal(portal, titel)
+                total += saved
+            except Exception as e:
+                log.warning(f"Portal error {portal['name']} '{titel}': {e}")
+            await asyncio.sleep(0.5)  # kurze Pause zwischen Requests
 
     log.info(f"=== Portal Crawler fertig: {total} Jobs ===")
     return total
