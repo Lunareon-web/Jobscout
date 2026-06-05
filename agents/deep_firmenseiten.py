@@ -193,7 +193,25 @@ async def run() -> int:
         .eq("is_active", True) \
         .execute()
 
-    companies = [c for c in (result.data or []) if c.get("career_url")]
+    # Nur Firmen aus der Seed-Liste (source='manual') oder mit relevantem Namen
+    RELEVANTE_BRANCHEN = re.compile(
+        r"design|architektur|architekt|interior|shopkonzept|retail|ladenbau|"
+        r"messe|ausstellung|agentur|marketing|branding|creative|kreativ|"
+        r"einrichtung|raumgestalt|workplace|store|flagship|visual|"
+        r"blocher|schweitzer|dula|syma|hpp|rkw|eller|materie|opus|ogilvy|"
+        r"markgraph|raumwerk|woehner|wöhner|douglas|peek|lindner|metro|"
+        r"huennebeck|hünnebeck|flora.*fauna|ingenhoven|dart",
+        re.I
+    )
+    all_companies = result.data or []
+    companies = [
+        c for c in all_companies
+        if c.get("career_url") and (
+            # Seed-Firmen immer crawlen
+            RELEVANTE_BRANCHEN.search(c.get("name", ""))
+            or RELEVANTE_BRANCHEN.search(c.get("career_url", ""))
+        )
+    ]
     if not companies:
         log.info("Keine Firmen in crawl_companies mit career_url.")
         return 0
