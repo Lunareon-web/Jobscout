@@ -78,6 +78,94 @@ def _make_id(url: str, titel: str, firma: str) -> str:
     key = (url or f"{titel}||{firma}").lower()
     return re.sub(r"[^a-z0-9]", "", key)[:64]
 
+def _extract_bs4(html: str, quelle: str, base_url: str) -> list[dict]:
+    """
+    BeautifulSoup-Extraktion für Portal-Suchergebnisse.
+    Funktioniert für Indeed, StepStone, Kimeta etc. ohne JSON-LD.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    jobs = []
+    seen = set()
+
+    # ── Indeed ──────────────────────────────────────────────────────────────
+    if "indeed.com" in base_url:
+        for card in soup.select("[data-jk], .job_seen_beacon, .tapItem"):
+            title_el = card.select_one("h2 span, .jobTitle span, [class*='jobTitle']")
+            comp_el  = card.select_one("[data-testid='company-name'], .companyName")
+            loc_el   = card.select_one("[data-testid='text-location'], .companyLocation")
+            link_el  = card.select_one("a[data-jk], a[id*='job_']")
+            titel = (title_el.get_text(strip=True) if title_el else "")
+            if not titel or len(titel) < 3: continue
+            href = ""
+            if link_el:
+                href = link_el.get("href", "")
+                if href and not href.startswith("http"):
+                    href = "https://de.indeed.com" + href
+            key = (titel + href).lower()
+            if key in seen: continue
+            seen.add(key)
+            jobs.append({
+                "titel": titel,
+                "unternehmen": comp_el.get_text(strip=True) if comp_el else "",
+                "ort": loc_el.get_text(strip=True) if loc_el else STANDORT,
+                "datum": "", "url": href,
+                "beschreibung": "", "arbeitszeit": "",
+            })
+
+    # ── StepStone ────────────────────────────────────────────────────────────
+    elif "stepstone.de" in base_url:
+        for card in soup.select("article[data-job-id], [class*='ResultList'] article, [class*='jobCard']"):
+            title_el = card.select_one("h2, [class*='title'], [class*='Title']")
+            comp_el  = card.select_one("[class*='company'], [class*='Company'], [class*='employer']")
+            link_el  = card.select_one("a[href*='/stellenangebote/'], a[href*='/job/']")
+            titel = (title_el.get_text(strip=True) if title_el else "")
+            if not titel or len(titel) < 3: continue
+            href = link_el.get("href", "") if link_el else ""
+            if href and not href.startswith("http"):
+                href = "https://www.stepstone.de" + href
+            key = (titel + href).lower()
+            if key in seen: continue
+            seen.add(key)
+            jobs.append({
+                "titel": titel,
+                "unternehmen": comp_el.get_text(strip=True) if comp_el else "",
+                "ort": STANDORT, "datum": "", "url": href,
+                "beschreibung": "", "arbeitszeit": "",
+            })
+
+    # ── Kimeta / generisch ────────────────────────────────────────────────────
+    else:
+        # Generisch: Links mit Job-Titeln in h2/h3 + Firmenname in der Nähe
+        for el in soup.select("h2 a, h3 a, .job-title a, [class*='jobtitle'] a, [class*='position'] a"):
+            titel = el.get_text(strip=True)
+            if not titel or len(titel) < 5 or len(titel) > 120: continue
+            href = el.get("href", "")
+            if href and not href.startswith("http"):
+                domain = re.search(r"https?://[^/]+", base_url)
+                if domain: href = domain.group(0) + href
+            # Firma: nächstes Geschwister-Element
+            parent = el.find_parent(["article", "li", "div", "section"])
+            firma = ""
+            if parent:
+                comp = parent.select_one("[class*='company'], [class*='employer'], [class*='arbeitgeber']")
+                if comp: firma = comp.get_text(strip=True)
+            key = (titel + href).lower()
+            if key in seen: continue
+            seen.add(key)
+            jobs.append({
+                "titel": titel, "unternehmen": firma,
+                "ort": STANDORT, "datum": "", "url": href,
+                "beschreibung": "", "arbeitszeit": "",
+            })
+
+    return jobs[:50]  # max 50 pro Seite
+
+
 def _extract_json_ld(html: str) -> list[dict]:
     jobs = []
     for m in re.finditer(r'<script[^>]+type="application/ld\+json"[^>]*>([\s\S]*?)</script>', html, re.I):
@@ -156,12 +244,18 @@ async def _crawl_portal(portal: dict, titel: str) -> int:
     if not html:
         return 0
 
-    # Strategie 1: JSON-LD
+    # Strategie 1: JSON-LD (strukturierte Daten)
     jobs = _extract_json_ld(html)
 
-    # Strategie 2: Ollama aus Markdown
-    if not jobs and markdown:
-        jobs = await _extract_with_ollama(markdown, quelle)
+    # Strategie 2: BeautifulSoup (portal-spezifische Selektoren)
+    if not jobs:
+        jobs = _extract_bs4(html, quelle, url)
+        if jobs:
+            log.debug(f"  {portal['name']} '{titel}': {len(jobs)} via BS4")
+
+    # Strategie 3: Ollama nur als letzter Fallback (kurzes Prompt, schnell)
+    if not jobs and markdown and len(markdown) > 300:
+        jobs = await _extract_with_ollama(markdown[:2000], quelle)
 
     if jobs:
         saved = _save_jobs(jobs, quelle)
