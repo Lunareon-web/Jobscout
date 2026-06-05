@@ -10,6 +10,7 @@ from core import queue as Q
 log = logging.getLogger(__name__)
 
 AGENT_MAP = {
+    # Bestehende Agents
     "discovery":         "agents.discovery",
     "validation":        "agents.validation",
     "company_candidate": "agents.validation",
@@ -19,6 +20,10 @@ AGENT_MAP = {
     "contact":           "agents.contact",
     "scoring":           "agents.scoring",
     "jobspy":            "agents.jobspy_agent",
+    # Crawl4AI Agents (echter Browser, lokal, kein IP-Blocking)
+    "portal_crawl":      "agents.portal_crawler",
+    "deep_firmenseiten": "agents.deep_firmenseiten",
+    "company_discovery": "agents.company_discovery",
 }
 
 

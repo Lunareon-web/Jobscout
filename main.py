@@ -50,6 +50,22 @@ def schedule_jobs():
         _enqueue_all_contacts,
         "cron", day_of_week="mon", hour=9, id="contact_weekly"
     )
+    # ── Crawl4AI Agents (echter Browser) ──────────────────────────
+    # Portal Crawler: täglich 05:30 (vor JobSpy, residential IP)
+    scheduler.add_job(
+        lambda: Q.enqueue("portal_crawl", priority=9),
+        "cron", hour=5, minute=30, id="portal_crawl_daily"
+    )
+    # Deep Firmenseiten: täglich 07:30 (nach Discovery)
+    scheduler.add_job(
+        lambda: Q.enqueue("deep_firmenseiten", priority=7),
+        "cron", hour=7, minute=30, id="deep_firmenseiten_daily"
+    )
+    # Company Discovery: täglich 09:30 (nach Deep Crawl)
+    scheduler.add_job(
+        lambda: Q.enqueue("company_discovery", priority=5),
+        "cron", hour=9, minute=30, id="company_discovery_daily"
+    )
 
 
 def _enqueue_all_career_pages():
@@ -115,3 +131,21 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.post("/api/queue/run-portals")
+async def run_portals_now():
+    """Portal Crawler (Crawl4AI) sofort starten."""
+    item = Q.enqueue("portal_crawl", priority=10)
+    return {"queued": item, "msg": "Portal Crawler (Crawl4AI) gestartet — Indeed, StepStone, Kimeta..."}
+
+@app.post("/api/queue/run-deep-firmenseiten")
+async def run_deep_firmenseiten_now():
+    """Deep Firmenseiten Crawler (Crawl4AI) sofort starten."""
+    item = Q.enqueue("deep_firmenseiten", priority=10)
+    return {"queued": item, "msg": "Deep Firmenseiten Crawler gestartet"}
+
+@app.post("/api/queue/run-company-discovery")
+async def run_company_discovery_now():
+    """Company Discovery Agent sofort starten."""
+    item = Q.enqueue("company_discovery", priority=8)
+    return {"queued": item, "msg": "Company Discovery gestartet — sucht career_url für neue Firmen"}

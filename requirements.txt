@@ -8,4 +8,9 @@ pydantic-settings
 beautifulsoup4
 lxml
 python-multipart
+
+# Deep Crawling — echter Browser, kein IP-Blocking, JS-SPAs
+crawl4ai>=0.6.0
+playwright
+
 # python-jobspy -- install manually: pip install python-jobspy --only-binary=:all:
