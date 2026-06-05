@@ -1,7 +1,7 @@
 /**
  * Company Discovery Agent
  * Liest neue Unternehmen aus BA-Job-Ergebnissen,
- * sucht deren Career-Page und speichert sie in der companies-Tabelle.
+ * sucht deren Career-Page und speichert sie in der crawl_companies-Tabelle.
  * Je mehr Crawls laufen, desto mehr Unternehmen werden entdeckt.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
@@ -92,9 +92,9 @@ async function guessWebsite(name: string): Promise<string | null> {
 // ── Handler ────────────────────────────────────────────────────────────────────
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
-  // 1. Bekannte Firmennamen aus companies-Tabelle laden
+  // 1. Bekannte Firmennamen aus crawl_companies-Tabelle laden
   const { data: existing } = await db
-    .from('companies')
+    .from('crawl_companies')
     .select('name')
     .limit(2000)
 
@@ -174,7 +174,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       discovered.push({ name, career_url, website })
 
       // In Supabase speichern
-      await db.from('companies').insert({
+      await db.from('crawl_companies').insert({
         name,
         website: website || null,
         career_url: career_url || null,
@@ -192,7 +192,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     candidates: candidates.length,
     discovered: discovered.length,
     with_career_page: withCareer,
-    new_companies: discovered.map(d => ({
+    new_crawl_companies: discovered.map(d => ({
       name: d.name,
       career_url: d.career_url,
       has_website: !!d.website,

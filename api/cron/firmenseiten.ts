@@ -1,6 +1,6 @@
 /**
  * Cron: Firmenseiten direkt crawlen
- * Quellen: Supabase companies-Tabelle (dynamisch wachsend) + hardcoded Startliste
+ * Quellen: Supabase crawl_companies-Tabelle (dynamisch wachsend) + hardcoded Startliste
  * Strategien: Greenhouse API → Lever API → JSON-LD → __NEXT_DATA__ → Link-Scan
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
@@ -24,7 +24,7 @@ const CRAWL_HEADERS = {
 }
 
 // ── Hardcoded Startliste (Seed) ───────────────────────────────────────────────
-// Diese werden automatisch in die companies-Tabelle übertragen falls noch nicht vorhanden
+// Diese werden automatisch in die crawl_companies-Tabelle übertragen falls noch nicht vorhanden
 
 const SEED_FIRMEN: { name: string; career_url: string; city: string }[] = [
   { name: 'HPP Architekten',        career_url: 'https://www.hpp.com/de/karriere/',                                        city: 'Düsseldorf' },
@@ -212,39 +212,39 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
   // Erst bekannte Namen laden, dann nur neue einfügen
   const { data: existingNames } = await db
-    .from('companies').select('name').limit(2000)
+    .from('crawl_companies').select('name').limit(2000)
   const knownSet = new Set((existingNames || []).map((r: any) => r.name.toLowerCase()))
 
   const newSeeds = SEED_FIRMEN.filter(f => !knownSet.has(f.name.toLowerCase()))
   for (const f of newSeeds) {
-    await db.from('companies').insert(
+    await db.from('crawl_companies').insert(
       { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', is_active: true }
     )
   }
 
   // 2. Alle aktiven Firmen mit career_url aus DB laden
   const { data: companyRows } = await db
-    .from('companies')
+    .from('crawl_companies')
     .select('id, name, career_url, city')
     .eq('is_active', true)
     .not('career_url', 'is', null)
     .order('last_crawled', { ascending: true, nullsFirst: true })
     .limit(50)  // max 50 pro Durchlauf (Timeout-Schutz)
 
-  const companies = (companyRows || []) as { id: string; name: string; career_url: string; city: string }[]
+  const crawl_companies = (companyRows || []) as { id: string; name: string; career_url: string; city: string }[]
 
-  if (!companies.length) {
+  if (!crawl_companies.length) {
     return res.status(200).json({ ok: true, source: 'firmenseiten', msg: 'Keine Firmen in DB', inserted: 0 })
   }
 
   // 3. Alle Career Pages parallel laden
   const htmlResults = await Promise.allSettled(
-    companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 12000))
+    crawl_companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 12000))
   )
 
   // 4. ATS-APIs parallel aufrufen wo erkannt
   const atsJobs = await Promise.allSettled(
-    companies.map((c, i) => {
+    crawl_companies.map((c, i) => {
       const r = htmlResults[i]
       if (r.status !== 'fulfilled' || !r.value) return Promise.resolve([])
       const ats = detectATS(r.value)
@@ -259,8 +259,8 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const log: { firma: string; count: number; strategy: string }[] = []
   const crawledIds: string[] = []
 
-  for (let i = 0; i < companies.length; i++) {
-    const c = companies[i]
+  for (let i = 0; i < crawl_companies.length; i++) {
+    const c = crawl_companies[i]
     const before = allJobs.length
     crawledIds.push(c.id)
 
@@ -295,7 +295,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
   // 6. last_crawled aktualisieren
   const now = new Date().toISOString()
-  await db.from('companies')
+  await db.from('crawl_companies')
     .update({ last_crawled: now })
     .in('id', crawledIds)
 
@@ -319,8 +319,8 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   return res.status(200).json({
     ok: !error,
     source: 'firmenseiten',
-    companies_in_db: companies.length,
-    companies_with_jobs: hits.length,
+    crawl_companies_in_db: crawl_companies.length,
+    crawl_companies_with_jobs: hits.length,
     hits,
     fetched: allJobs.length,
     deduped: deduped.length,
