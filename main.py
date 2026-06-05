@@ -2,7 +2,13 @@
 Jobscout Intelligence Platform — FastAPI Backend
 Start: uvicorn main:app --reload --port 8000
 """
+import sys
 import asyncio
+
+# Windows: ProactorEventLoop ist Pflicht für Playwright/Crawl4AI (subprocess_exec)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
