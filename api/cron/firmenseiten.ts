@@ -1,19 +1,20 @@
 /**
  * Cron: Firmenseiten direkt crawlen
+ * Quellen: Supabase companies-Tabelle (dynamisch wachsend) + hardcoded Startliste
  * Strategien: Greenhouse API → Lever API → JSON-LD → __NEXT_DATA__ → Link-Scan
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { XMLParser } from 'fast-xml-parser'
 import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
 import { stripHtml, safeFetch } from '../_lib/helpers'
+import { db } from '../_lib/db'
 
 const JOBTITEL_RE = new RegExp([
   'Designer', 'Innenarchitekt', 'Interior', 'Architekt', 'Raumplan',
-  'Raumgestalter', 'Concept', 'Brand', 'Visual', 'Merchandise',
+  'Raumgestalter', 'Concept', 'Brand', 'Visual', 'Merchandis',
   'Manager', 'Projektleit', 'Projektmanager', 'Project', 'Bauleiter',
   'Kreativ', 'Director', 'Ladenbauer', 'Messe', 'Ausstellung',
-  'Grafik', 'Marketing', 'Shopkonzept', 'Retail',
+  'Grafik', 'Marketing', 'Shopkonzept', 'Retail', 'Architect',
 ].join('|'), 'i')
 
 const CRAWL_HEADERS = {
@@ -22,57 +23,36 @@ const CRAWL_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
 
-// ── Firmenliste ───────────────────────────────────────────────────────────────
-// greenhouse_slug / lever_slug: leer lassen wenn unbekannt, wird aus HTML erkannt
+// ── Hardcoded Startliste (Seed) ───────────────────────────────────────────────
+// Diese werden automatisch in die companies-Tabelle übertragen falls noch nicht vorhanden
 
-const FIRMEN: {
-  name: string
-  url: string
-  ort: string
-  greenhouse?: string
-  lever?: string
-}[] = [
-  // Architektur Düsseldorf
-  { name: 'HPP Architekten',        url: 'https://www.hpp.com/de/karriere/',                                        ort: 'Düsseldorf' },
-  { name: 'RKW Architektur',        url: 'https://www.rkw-architektur.de/buero/karriere/',                          ort: 'Düsseldorf' },
-  { name: 'Ingenhoven Architects',  url: 'https://www.ingenhovenarchitects.com/studio/karriere/',                    ort: 'Düsseldorf' },
-  { name: 'Eller + Eller',          url: 'https://www.eller-eller.de/karriere/',                                    ort: 'Düsseldorf' },
-  { name: 'dart Architekten',       url: 'https://www.dart-architekten.de/buero/',                                  ort: 'Düsseldorf' },
-  { name: 'Winking Froh Architekten', url: 'https://www.winking-froh.de/buero/jobs/',                              ort: 'Düsseldorf' },
-  { name: 'JSWD Architekten',       url: 'https://www.jswd-architekten.de/buero/karriere/',                        ort: 'Köln' },
-  { name: 'schneider+schumacher',   url: 'https://www.schneider-schumacher.de/aktuelles/jobs/',                    ort: 'Frankfurt' },
-  // Interior / Shop / Retail Design
-  { name: 'Blocher Partners',       url: 'https://www.blocherpartners.de/karriere/',                                ort: 'Düsseldorf' },
-  { name: 'Schweitzer Project',     url: 'https://www.schweitzer-project.com/karriere/',                           ort: 'Düsseldorf' },
-  { name: 'Materie',                url: 'https://www.materie.de/karriere/',                                       ort: 'Düsseldorf' },
-  { name: 'Kurz Design',            url: 'https://www.kurz-design.de/karriere/',                                   ort: 'Neuss' },
-  { name: 'Pieron Shopkonzepte',    url: 'https://www.pieron.de/unternehmen/karriere/',                            ort: 'Neuss' },
-  { name: 'CB.e Retail Solutions',  url: 'https://www.cbe-retail.com/karriere/',                                   ort: 'Hilden' },
-  { name: 'Umdasch Shop Concept',   url: 'https://www.umdasch-shop-concept.com/de/unternehmen/karriere/',          ort: 'Neuss' },
-  { name: 'Dula-Werke',             url: 'https://www.dula.de/karriere/',                                          ort: 'Mönchengladbach' },
-  { name: 'Syma-System',            url: 'https://www.syma.de/de/karriere/',                                       ort: 'Meerbusch' },
-  { name: 'Wöhner Design',          url: 'https://www.woehner-design.de/karriere/',                                ort: 'Düsseldorf' },
-  { name: 'Atelier Markgraph',      url: 'https://www.markgraph.de/karriere/',                                     ort: 'Frankfurt' },
-  { name: 'Raumwerk',               url: 'https://www.raumwerk.net/jobs/',                                         ort: 'Frankfurt' },
-  // Messe & Events
-  { name: 'HÜNNEBECK',              url: 'https://www.huennebeck.com/karriere/',                                   ort: 'Ratingen' },
-  { name: 'flora&faunavisions',     url: 'https://www.florafaunavisions.de/karriere/',                             ort: 'Düsseldorf' },
-  // Agenturen & Marketing Düsseldorf
-  { name: 'OPUS Marketing',         url: 'https://www.opus-marketing.de/karriere/',                                ort: 'Düsseldorf' },
-  { name: 'BBDO Germany',           url: 'https://www.bbdo.de/de/karriere/',                                       ort: 'Düsseldorf' },
-  { name: 'GREY Worldwide',         url: 'https://www.grey.com/de/karriere/',                                      ort: 'Düsseldorf' },
-  { name: 'Ogilvy Germany',         url: 'https://www.ogilvy.com/de/careers',                                     ort: 'Düsseldorf' },
-  // Retail & Fashion
-  { name: 'Douglas',                url: 'https://karriere.douglas.de/stellenangebote/',                           ort: 'Düsseldorf' },
-  { name: 'Peek & Cloppenburg',     url: 'https://karriere.peek-cloppenburg.de/stellenangebote/',                  ort: 'Düsseldorf' },
-  { name: 'Lindner Hotels',         url: 'https://karriere.lindner.de/',                                           ort: 'Düsseldorf' },
-  { name: 'METRO',                  url: 'https://jobs.metro.com/de/de/search-results?m=20',                       ort: 'Düsseldorf', greenhouse: 'metro' },
-  { name: 'C&A',                    url: 'https://www.c-and-a.com/de/de/corporate/company/karriere/',              ort: 'Düsseldorf' },
-  { name: 'Esprit',                 url: 'https://www.esprit.com/de-de/service/jobs/',                             ort: 'Düsseldorf' },
-  // Sonstige relevante Firmen NRW
-  { name: 'Henkel AG',              url: 'https://careers.henkel.com/jobs?location=Düsseldorf',                    ort: 'Düsseldorf' },
-  { name: 'REWE Group',             url: 'https://rewegroup.jobs/stellenangebote/?location=Köln',                  ort: 'Köln' },
-  { name: 'Vorwerk',                url: 'https://karriere.vorwerk.de/stellenangebote/',                           ort: 'Wuppertal' },
+const SEED_FIRMEN: { name: string; career_url: string; city: string }[] = [
+  { name: 'HPP Architekten',        career_url: 'https://www.hpp.com/de/karriere/',                                        city: 'Düsseldorf' },
+  { name: 'RKW Architektur',        career_url: 'https://www.rkw-architektur.de/buero/karriere/',                          city: 'Düsseldorf' },
+  { name: 'Ingenhoven Architects',  career_url: 'https://www.ingenhovenarchitects.com/studio/karriere/',                    city: 'Düsseldorf' },
+  { name: 'Eller + Eller',          career_url: 'https://www.eller-eller.de/karriere/',                                    city: 'Düsseldorf' },
+  { name: 'dart Architekten',       career_url: 'https://www.dart-architekten.de/buero/',                                  city: 'Düsseldorf' },
+  { name: 'Blocher Partners',       career_url: 'https://www.blocherpartners.de/karriere/',                                city: 'Düsseldorf' },
+  { name: 'Schweitzer Project',     career_url: 'https://www.schweitzer-project.com/karriere/',                           city: 'Düsseldorf' },
+  { name: 'Materie',                career_url: 'https://www.materie.de/karriere/',                                       city: 'Düsseldorf' },
+  { name: 'Kurz Design',            career_url: 'https://www.kurz-design.de/karriere/',                                   city: 'Neuss' },
+  { name: 'Pieron Shopkonzepte',    career_url: 'https://www.pieron.de/unternehmen/karriere/',                            city: 'Neuss' },
+  { name: 'CB.e Retail Solutions',  career_url: 'https://www.cbe-retail.com/karriere/',                                   city: 'Hilden' },
+  { name: 'Umdasch Shop Concept',   career_url: 'https://www.umdasch-shop-concept.com/de/unternehmen/karriere/',          city: 'Neuss' },
+  { name: 'Dula-Werke',             career_url: 'https://www.dula.de/karriere/',                                          city: 'Mönchengladbach' },
+  { name: 'Syma-System',            career_url: 'https://www.syma.de/de/karriere/',                                       city: 'Meerbusch' },
+  { name: 'Wöhner Design',          career_url: 'https://www.woehner-design.de/karriere/',                                city: 'Düsseldorf' },
+  { name: 'Atelier Markgraph',      career_url: 'https://www.markgraph.de/karriere/',                                     city: 'Frankfurt' },
+  { name: 'Raumwerk',               career_url: 'https://www.raumwerk.net/jobs/',                                         city: 'Frankfurt' },
+  { name: 'HÜNNEBECK',              career_url: 'https://www.huennebeck.com/karriere/',                                   city: 'Ratingen' },
+  { name: 'flora&faunavisions',     career_url: 'https://www.florafaunavisions.de/karriere/',                             city: 'Düsseldorf' },
+  { name: 'OPUS Marketing',         career_url: 'https://www.opus-marketing.de/karriere/',                                city: 'Düsseldorf' },
+  { name: 'Douglas',                career_url: 'https://karriere.douglas.de/stellenangebote/',                           city: 'Düsseldorf' },
+  { name: 'Peek & Cloppenburg',     career_url: 'https://karriere.peek-cloppenburg.de/stellenangebote/',                  city: 'Düsseldorf' },
+  { name: 'Lindner Hotels',         career_url: 'https://karriere.lindner.de/',                                           city: 'Düsseldorf' },
+  { name: 'METRO',                  career_url: 'https://jobs.metro.com/de/de/search-results?m=20',                       city: 'Düsseldorf' },
+  { name: 'C&A',                    career_url: 'https://www.c-and-a.com/de/de/corporate/company/karriere/',              city: 'Düsseldorf' },
+  { name: 'Ogilvy Germany',         career_url: 'https://www.ogilvy.com/de/careers',                                     city: 'Düsseldorf' },
 ]
 
 // ── ATS Detection ─────────────────────────────────────────────────────────────
@@ -82,18 +62,14 @@ type ATS = { type: 'greenhouse' | 'lever'; slug: string }
 function detectATS(html: string): ATS | null {
   const gh = html.match(/boards(?:-api)?\.greenhouse\.io\/(?:v\d\/boards\/)?([a-z0-9_-]+)/i)
   if (gh) return { type: 'greenhouse', slug: gh[1] }
-
   const lv = html.match(/jobs\.lever\.co\/([a-z0-9_-]+)/i)
   if (lv) return { type: 'lever', slug: lv[1] }
-
   return null
 }
 
-// ── ATS API Fetchers ──────────────────────────────────────────────────────────
-
 async function fetchGreenhouse(slug: string, firma: string, ort: string): Promise<CrawledJob[]> {
   const data = await safeFetch(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`, {}, 10000)
-  if (!data || data.includes('<!DOCTYPE')) return []
+  if (!data || data.trimStart().startsWith('<!DOCTYPE')) return []
   try {
     const json = JSON.parse(data)
     return (json.jobs || [])
@@ -102,8 +78,7 @@ async function fetchGreenhouse(slug: string, firma: string, ort: string): Promis
         titel: j.title || '',
         unternehmen: firma,
         ort: j.location?.name || ort,
-        plz: '',
-        datum: '',
+        plz: '', datum: '',
         url: j.absolute_url || '',
         quelle: `Direkt: ${firma}`,
         beschreibung: '',
@@ -115,7 +90,7 @@ async function fetchGreenhouse(slug: string, firma: string, ort: string): Promis
 
 async function fetchLever(slug: string, firma: string, ort: string): Promise<CrawledJob[]> {
   const data = await safeFetch(`https://api.lever.co/v0/postings/${slug}?mode=json`, {}, 10000)
-  if (!data || data.includes('<!DOCTYPE')) return []
+  if (!data || data.trimStart().startsWith('<!DOCTYPE')) return []
   try {
     const json = JSON.parse(data)
     return (Array.isArray(json) ? json : [])
@@ -135,7 +110,7 @@ async function fetchLever(slug: string, firma: string, ort: string): Promise<Cra
   } catch { return [] }
 }
 
-// ── HTML Parsing Strategien ───────────────────────────────────────────────────
+// ── HTML Parsing ───────────────────────────────────────────────────────────────
 
 function parseJsonLd(html: string, firma: string, ort: string): CrawledJob[] {
   const jobs: CrawledJob[] = []
@@ -229,77 +204,97 @@ function parseLinkScan(html: string, firma: string, ort: string, baseUrl: string
   return jobs.slice(0, 8)
 }
 
-// ── Handler ───────────────────────────────────────────────────────────────────
+// ── Handler ────────────────────────────────────────────────────────────────────
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const runId = await startCrawlRun('firmenseiten')
 
-  // Schritt 1: alle Career Pages parallel laden
+  // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
+  for (const f of SEED_FIRMEN) {
+    await db.from('companies').upsert(
+      { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', status: 'active' },
+      { onConflict: 'name', ignoreDuplicates: true }
+    )
+  }
+
+  // 2. Alle aktiven Firmen mit career_url aus DB laden
+  const { data: companyRows } = await db
+    .from('companies')
+    .select('id, name, career_url, city')
+    .eq('status', 'active')
+    .not('career_url', 'is', null)
+    .order('last_crawled', { ascending: true, nullsFirst: true })
+    .limit(50)  // max 50 pro Durchlauf (Timeout-Schutz)
+
+  const companies = (companyRows || []) as { id: string; name: string; career_url: string; city: string }[]
+
+  if (!companies.length) {
+    return res.status(200).json({ ok: true, source: 'firmenseiten', msg: 'Keine Firmen in DB', inserted: 0 })
+  }
+
+  // 3. Alle Career Pages parallel laden
   const htmlResults = await Promise.allSettled(
-    FIRMEN.map(f => safeFetch(f.url, { headers: CRAWL_HEADERS }, 12000))
+    companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 12000))
   )
 
-  // Schritt 2: für Firmen mit bekanntem/erkanntem ATS → API; sonst HTML parsing
-  const atsApiCalls: Promise<CrawledJob[]>[] = FIRMEN.map((f, i) => {
-    // Hardcoded ATS slug hat Vorrang
-    if (f.greenhouse) return fetchGreenhouse(f.greenhouse, f.name, f.ort)
-    if (f.lever)      return fetchLever(f.lever, f.name, f.ort)
-
-    // ATS aus HTML erkennen
-    const r = htmlResults[i]
-    if (r.status === 'fulfilled' && r.value) {
+  // 4. ATS-APIs parallel aufrufen wo erkannt
+  const atsJobs = await Promise.allSettled(
+    companies.map((c, i) => {
+      const r = htmlResults[i]
+      if (r.status !== 'fulfilled' || !r.value) return Promise.resolve([])
       const ats = detectATS(r.value)
-      if (ats?.type === 'greenhouse') return fetchGreenhouse(ats.slug, f.name, f.ort)
-      if (ats?.type === 'lever')      return fetchLever(ats.slug, f.name, f.ort)
-    }
-    return Promise.resolve([])
-  })
-  const atsResults = await Promise.allSettled(atsApiCalls)
+      if (ats?.type === 'greenhouse') return fetchGreenhouse(ats.slug, c.name, c.city)
+      if (ats?.type === 'lever')      return fetchLever(ats.slug, c.name, c.city)
+      return Promise.resolve([])
+    })
+  )
 
+  // 5. Jobs extrahieren
   const allJobs: CrawledJob[] = []
   const log: { firma: string; count: number; strategy: string }[] = []
+  const crawledIds: string[] = []
 
-  for (let i = 0; i < FIRMEN.length; i++) {
-    const firma = FIRMEN[i]
+  for (let i = 0; i < companies.length; i++) {
+    const c = companies[i]
     const before = allJobs.length
+    crawledIds.push(c.id)
 
-    // ATS API hatte Ergebnisse → verwenden
-    const atsR = atsResults[i]
+    // ATS API hatte Ergebnisse
+    const atsR = atsJobs[i]
     if (atsR.status === 'fulfilled' && atsR.value.length > 0) {
       allJobs.push(...atsR.value)
-      log.push({ firma: firma.name, count: atsR.value.length, strategy: 'ats-api' })
+      log.push({ firma: c.name, count: atsR.value.length, strategy: 'ats-api' })
       continue
     }
 
-    // HTML Parsing
     const htmlR = htmlResults[i]
     if (htmlR.status === 'rejected' || !htmlR.value) {
-      log.push({ firma: firma.name, count: 0, strategy: 'timeout' })
+      log.push({ firma: c.name, count: 0, strategy: 'timeout' })
       continue
     }
     const html = htmlR.value
 
-    // Strategie 1: JSON-LD
-    const jsonLd = parseJsonLd(html, firma.name, firma.ort).filter(j => JOBTITEL_RE.test(j.titel))
-    if (jsonLd.length) {
-      allJobs.push(...jsonLd)
-      log.push({ firma: firma.name, count: jsonLd.length, strategy: 'json-ld' })
-      continue
-    }
-    // Strategie 2: __NEXT_DATA__
-    const next = parseNextData(html, firma.name, firma.ort).filter(j => JOBTITEL_RE.test(j.titel))
-    if (next.length) {
-      allJobs.push(...next)
-      log.push({ firma: firma.name, count: next.length, strategy: 'next-data' })
-      continue
-    }
-    // Strategie 3: Link-Scan Fallback
-    const links = parseLinkScan(html, firma.name, firma.ort, firma.url)
+    // JSON-LD
+    const jsonLd = parseJsonLd(html, c.name, c.city).filter(j => JOBTITEL_RE.test(j.titel))
+    if (jsonLd.length) { allJobs.push(...jsonLd); log.push({ firma: c.name, count: jsonLd.length, strategy: 'json-ld' }); continue }
+
+    // __NEXT_DATA__
+    const next = parseNextData(html, c.name, c.city).filter(j => JOBTITEL_RE.test(j.titel))
+    if (next.length) { allJobs.push(...next); log.push({ firma: c.name, count: next.length, strategy: 'next-data' }); continue }
+
+    // Link-Scan
+    const links = parseLinkScan(html, c.name, c.city, c.career_url)
     allJobs.push(...links)
-    log.push({ firma: firma.name, count: links.length, strategy: links.length ? 'link-scan' : 'none' })
+    log.push({ firma: c.name, count: links.length, strategy: links.length ? 'link-scan' : 'none' })
   }
 
-  // Deduplizieren
+  // 6. last_crawled aktualisieren
+  const now = new Date().toISOString()
+  await db.from('companies')
+    .update({ last_crawled: now })
+    .in('id', crawledIds)
+
+  // 7. Deduplizieren + speichern
   const seen = new Set<string>()
   const deduped = allJobs.filter(j => {
     if (!j.titel || j.titel.length < 3) return false
@@ -311,21 +306,16 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
   let inserted = 0
   let error: string | undefined
-  try {
-    inserted = await upsertJobs(deduped)
-  } catch (e) {
-    error = String(e)
-  }
+  try { inserted = await upsertJobs(deduped) } catch (e) { error = String(e) }
 
   if (runId) await finishCrawlRun(runId, deduped.length, inserted, error ? 'error' : 'done', error)
 
-  // Nur Firmen mit Fund im Log zurückgeben
   const hits = log.filter(l => l.count > 0)
   return res.status(200).json({
     ok: !error,
     source: 'firmenseiten',
-    firms_checked: FIRMEN.length,
-    firms_with_jobs: hits.length,
+    companies_in_db: companies.length,
+    companies_with_jobs: hits.length,
     hits,
     fetched: allJobs.length,
     deduped: deduped.length,

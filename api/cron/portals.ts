@@ -1,10 +1,10 @@
 /**
- * Cron: Jobportale
- * Nur Quellen die tatsächlich von Vercel-IPs erreichbar sind.
- * RSS-Aggregatoren (Kimeta, Indeed, StepStone) sind IP-geblockt → entfernt.
- * Stattdessen: nischen-spezifische Quellen mit öffentlichen Feeds.
+ * Cron: Jobportale — Edge Runtime (Cloudflare CDN-IPs, weniger IP-Blocking als AWS Lambda)
+ * Quellen: Kimeta, Indeed, Karriere.de, Stellenanzeigen.de, Kalaydo, StepStone, Jobware
  */
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+// Edge Runtime: läuft auf Cloudflare CDN-Nodes (weniger geblockt als AWS Lambda)
+export const config = { runtime: 'edge' }
+
 import { XMLParser } from 'fast-xml-parser'
 import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'

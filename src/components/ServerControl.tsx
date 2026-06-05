@@ -16,9 +16,10 @@ interface SourceState {
 }
 
 const SOURCES = [
-  { key: 'ba',           label: 'Bundesagentur für Arbeit',  desc: 'BA-API + KldB-Berufsgruppen',              path: '/api/cron/ba' },
-  { key: 'portals',      label: 'Portale',                   desc: 'Kimeta · Indeed · Karriere · StepStone',   path: '/api/cron/portals' },
-  { key: 'firmenseiten', label: 'Firmenseiten direkt',       desc: '20 Unternehmens-Karriereseiten',           path: '/api/cron/firmenseiten' },
+  { key: 'ba',           label: 'Bundesagentur für Arbeit',  desc: 'BA-API + KldB-Berufsgruppen',                path: '/api/cron/ba' },
+  { key: 'portals',      label: 'Portale',                   desc: 'Kimeta · Indeed · Karriere · StepStone',     path: '/api/cron/portals' },
+  { key: 'firmenseiten', label: 'Firmenseiten direkt',       desc: 'Alle Firmen aus der DB crawlen',             path: '/api/cron/firmenseiten' },
+  { key: 'discover',     label: 'Neue Firmen entdecken',     desc: 'Aus BA-Ergebnissen → companies-DB erweitern', path: '/api/cron/discover' },
 ]
 
 async function runCrawler(path: string): Promise<CrawlResult> {
