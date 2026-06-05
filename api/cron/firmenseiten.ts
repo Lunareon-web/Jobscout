@@ -210,10 +210,15 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const runId = await startCrawlRun('firmenseiten')
 
   // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
-  for (const f of SEED_FIRMEN) {
-    await db.from('companies').upsert(
-      { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', is_active: true },
-      { onConflict: 'name', ignoreDuplicates: true }
+  // Erst bekannte Namen laden, dann nur neue einfügen
+  const { data: existingNames } = await db
+    .from('companies').select('name').limit(2000)
+  const knownSet = new Set((existingNames || []).map((r: any) => r.name.toLowerCase()))
+
+  const newSeeds = SEED_FIRMEN.filter(f => !knownSet.has(f.name.toLowerCase()))
+  for (const f of newSeeds) {
+    await db.from('companies').insert(
+      { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', is_active: true }
     )
   }
 

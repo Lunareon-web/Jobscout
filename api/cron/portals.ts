@@ -2,9 +2,7 @@
  * Cron: Jobportale — Edge Runtime (Cloudflare CDN-IPs, weniger IP-Blocking als AWS Lambda)
  * Quellen: Kimeta, Indeed, Karriere.de, Stellenanzeigen.de, Kalaydo, StepStone, Jobware
  */
-// Edge Runtime: läuft auf Cloudflare CDN-Nodes (weniger geblockt als AWS Lambda)
-export const config = { runtime: 'edge' }
-
+import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { XMLParser } from 'fast-xml-parser'
 import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
