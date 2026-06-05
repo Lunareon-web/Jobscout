@@ -180,7 +180,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
         career_url: career_url || null,
         city: city || null,
         source,
-        status: 'active',
+        is_active: true,
       }).select()
     }
   }

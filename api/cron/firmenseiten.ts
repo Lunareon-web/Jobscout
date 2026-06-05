@@ -212,7 +212,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
   for (const f of SEED_FIRMEN) {
     await db.from('companies').upsert(
-      { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', status: 'active' },
+      { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', is_active: true },
       { onConflict: 'name', ignoreDuplicates: true }
     )
   }
@@ -221,7 +221,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const { data: companyRows } = await db
     .from('companies')
     .select('id, name, career_url, city')
-    .eq('status', 'active')
+    .eq('is_active', true)
     .not('career_url', 'is', null)
     .order('last_crawled', { ascending: true, nullsFirst: true })
     .limit(50)  // max 50 pro Durchlauf (Timeout-Schutz)
