@@ -1,8 +1,7 @@
 """
-Deep Firmenseiten Crawler — Crawl4AI + Playwright
-Crawlt JS-gerenderte Karriere-Seiten (SPAs, React, Vue, etc.)
+Deep Firmenseiten Crawler — Crawl4AI + Thread-basiert (Windows-Fix)
+Crawlt JS-gerenderte Karriere-Seiten (SPAs, React, Vue etc.)
 Liest Firmen aus crawl_companies-Tabelle (dynamisch wachsend).
-Fallback: Ollama/Gemma extrahiert Jobs aus unstrukturiertem Inhalt.
 """
 import asyncio
 import json
@@ -10,6 +9,7 @@ import logging
 import re
 from datetime import datetime
 
+from agents._crawl4ai_thread import crawl_url
 from core.database import get_db
 from core.config import settings
 import core.ollama_client as LLM
@@ -52,7 +52,7 @@ def _extract_json_ld(html: str, firma: str, ort: str) -> list[dict]:
             for item in items:
                 if item.get("@type") != "JobPosting": continue
                 titel = item.get("title", "")
-                if not titel: continue
+                if not titel or not JOBTITEL_RE.search(titel): continue
                 jobs.append({
                     "titel": titel,
                     "unternehmen": item.get("hiringOrganization", {}).get("name", firma),
@@ -63,7 +63,7 @@ def _extract_json_ld(html: str, firma: str, ort: str) -> list[dict]:
                     "arbeitszeit": item.get("employmentType", ""),
                 })
         except: pass
-    return [j for j in jobs if JOBTITEL_RE.search(j["titel"])]
+    return jobs
 
 def _extract_next_data(html: str, firma: str, ort: str) -> list[dict]:
     jobs = []
@@ -98,28 +98,20 @@ def _extract_next_data(html: str, firma: str, ort: str) -> list[dict]:
     return jobs
 
 async def _extract_with_ollama(markdown: str, firma: str, career_url: str) -> list[dict]:
-    """Ollama/Gemma extrahiert Jobs wenn kein JSON-LD gefunden."""
-    if not markdown or len(markdown) < 100:
-        return []
+    if not markdown or len(markdown) < 100: return []
     prompt = f"""
-Du analysierst die Karriere-Seite von "{firma}".
-Extrahiere alle Stellenangebote die für Design/Interior/Architektur/Management relevant sind.
-Gib NUR valides JSON zurück ohne Erklärungen:
-[
-  {{"titel": "...", "url": "vollständige URL oder {career_url}", "ort": "..."}}
-]
-Falls keine passenden Stellen: leeres Array [].
+Analysiere die Karriere-Seite von "{firma}".
+Extrahiere alle Stellenangebote für Design/Interior/Architektur/Management.
+Gib NUR valides JSON zurück — leeres Array [] wenn keine passenden Stellen:
+[{{"titel": "...", "url": "{career_url}", "ort": "..."}}]
 
-Karriere-Seite (Markdown):
+Karriere-Seite:
 {markdown[:3000]}
 """
     try:
         result = await LLM.analyze(prompt, "", max_chars=0)
-        if isinstance(result, list):
-            return [j for j in result if isinstance(j, dict) and j.get("titel")]
-        return []
-    except:
-        return []
+        return [j for j in (result if isinstance(result, list) else []) if j.get("titel")]
+    except: return []
 
 def _save_jobs(jobs: list[dict], firma: str) -> int:
     if not jobs: return 0
@@ -128,7 +120,7 @@ def _save_jobs(jobs: list[dict], firma: str) -> int:
     quelle = f"Direkt: {firma}"
     rows = []
     for j in jobs:
-        titel = j.get("titel", "").strip()
+        titel = (j.get("titel") or "").strip()
         if not titel or len(titel) < 3: continue
         rows.append({
             "id": _make_id(j.get("url", ""), titel, firma),
@@ -152,82 +144,50 @@ def _save_jobs(jobs: list[dict], firma: str) -> int:
             inserted += len(rows[i:i+50])
     return inserted
 
-# ── Crawl4AI ───────────────────────────────────────────────────────────────────
+# ── Einzelne Firma crawlen ─────────────────────────────────────────────────────
 
-async def _crawl_career_page(company: dict) -> int:
-    """Crawlt eine einzelne Karriere-Seite mit Playwright."""
+async def _crawl_company(company: dict) -> int:
     firma = company["name"]
-    url = company["career_url"]
-    ort = company.get("city") or STANDORT
+    url   = company["career_url"]
+    ort   = company.get("city") or STANDORT
 
-    log.info(f"  Deep Crawl: {firma} → {url}")
+    log.info(f"  Deep Crawl: {firma}")
 
-    try:
-        from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-
-        browser_cfg = BrowserConfig(
-            headless=True,
-            browser_type="chromium",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124",
-            verbose=False,
-        )
-        run_cfg = CrawlerRunConfig(
-            wait_for_timeout=5000,
-            js_code=["window.scrollTo(0, document.body.scrollHeight / 2)"],
-            remove_overlay_elements=True,
-            page_timeout=35000,
-            verbose=False,
-        )
-
-        async with AsyncWebCrawler(config=browser_cfg) as crawler:
-            result = await crawler.arun(url=url, config=run_cfg)
-
-        if not result or not result.success:
-            log.debug(f"  Kein Ergebnis: {firma}")
-            return 0
-
-        html = result.html or ""
-        markdown = result.markdown or result.fit_markdown or ""
-
-        # Strategie 1: JSON-LD (schnell, präzise)
-        jobs = _extract_json_ld(html, firma, ort)
-        if jobs:
-            saved = _save_jobs(jobs, firma)
-            log.info(f"  {firma}: {saved} Jobs (JSON-LD)")
-            return saved
-
-        # Strategie 2: __NEXT_DATA__ (Next.js SSR)
-        jobs = _extract_next_data(html, firma, ort)
-        if jobs:
-            saved = _save_jobs(jobs, firma)
-            log.info(f"  {firma}: {saved} Jobs (__NEXT_DATA__)")
-            return saved
-
-        # Strategie 3: Ollama/Gemma (für alles andere)
-        jobs = await _extract_with_ollama(markdown, firma, url)
-        if jobs:
-            saved = _save_jobs(jobs, firma)
-            log.info(f"  {firma}: {saved} Jobs (Ollama)")
-            return saved
-
-        log.debug(f"  {firma}: Keine Jobs gefunden")
+    html, markdown = await crawl_url(url, wait_ms=5000)
+    if not html:
+        log.debug(f"  Kein HTML: {firma}")
         return 0
 
-    except ImportError:
-        log.error("crawl4ai nicht installiert. Starte setup_crawl4ai.bat")
-        return 0
-    except Exception as e:
-        log.warning(f"  Deep Crawl Fehler {firma}: {e}")
-        return 0
+    # Strategie 1: JSON-LD
+    jobs = _extract_json_ld(html, firma, ort)
+    if jobs:
+        saved = _save_jobs(jobs, firma)
+        log.info(f"  {firma}: {saved} Jobs (JSON-LD)")
+        return saved
 
-# ── Handler ────────────────────────────────────────────────────────────────────
+    # Strategie 2: __NEXT_DATA__
+    jobs = _extract_next_data(html, firma, ort)
+    if jobs:
+        saved = _save_jobs(jobs, firma)
+        log.info(f"  {firma}: {saved} Jobs (NextData)")
+        return saved
+
+    # Strategie 3: Ollama/Gemma
+    jobs = await _extract_with_ollama(markdown, firma, url)
+    if jobs:
+        saved = _save_jobs(jobs, firma)
+        log.info(f"  {firma}: {saved} Jobs (Ollama)")
+        return saved
+
+    log.debug(f"  {firma}: Keine Jobs")
+    return 0
+
+# ── Entry Point ────────────────────────────────────────────────────────────────
 
 async def run() -> int:
-    """Crawlt alle Firmenseiten aus der crawl_companies-Tabelle."""
-    log.info("=== Deep Firmenseiten Crawler (Crawl4AI) gestartet ===")
+    log.info("=== Deep Firmenseiten Crawler gestartet ===")
     db = get_db()
 
-    # Alle aktiven Firmen mit career_url laden (zuerst die am längsten nicht gecrawlten)
     result = db.table("crawl_companies") \
         .select("id, name, career_url, city") \
         .eq("is_active", True) \
@@ -242,18 +202,15 @@ async def run() -> int:
     total = 0
     now = datetime.utcnow().isoformat()
 
-    # Sequenziell crawlen (Browser-Ressourcen schonen)
+    # Sequenziell (ein Browser-Thread auf einmal, RAM-schonend)
     for company in companies:
-        saved = await _crawl_career_page(company)
+        saved = await _crawl_company(company)
         total += saved
-
-        # last_crawled aktualisieren
         db.table("crawl_companies") \
             .update({"last_crawled": now}) \
             .eq("id", company["id"]) \
             .execute()
+        await asyncio.sleep(1)
 
-        await asyncio.sleep(1.5)  # Höfliche Pause zwischen Firmen
-
-    log.info(f"=== Deep Firmenseiten fertig: {total} Jobs gespeichert ===")
+    log.info(f"=== Deep Firmenseiten fertig: {total} Jobs ===")
     return total
