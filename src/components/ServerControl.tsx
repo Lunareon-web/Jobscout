@@ -7,6 +7,7 @@ interface CrawlResult {
   ok: boolean
   fetched?: number
   inserted?: number
+  deleted?: number
   msg?: string
   error?: string
   by_source?: Record<string, number>
@@ -26,6 +27,7 @@ const SOURCES = [
   { key: 'firmenseiten', label: 'Firmenseiten',             desc: 'ATS · JSON-LD · Jina + Gemini (JS-SPAs)',   path: '/api/cron/firmenseiten', method: 'POST' },
   { key: 'linkedin',     label: 'LinkedIn',                 desc: 'Guest-Scraping via linkedin-jobs-api (kein Key)', path: '/api/cron/linkedin', method: 'GET' },
   { key: 'discover',     label: 'Neue Firmen entdecken',    desc: 'Firmennamen aus BA → crawl_companies',      path: '/api/cron/discover',     method: 'GET' },
+  { key: 'cleanup',      label: 'Alte Stellen löschen (>30 Tage)', desc: 'Hard-Delete aus DB (täglich 07:00 auto)', path: '/api/cron/cleanup?max_tage=30', method: 'GET' },
 ]
 
 function SourceCard({ s, state }: { s: typeof SOURCES[0]; state: SourceState }) {
@@ -60,6 +62,7 @@ function SourceCard({ s, state }: { s: typeof SOURCES[0]; state: SourceState }) 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {state.result.fetched !== undefined && <span>Gefunden: <strong>{state.result.fetched}</strong></span>}
               {state.result.inserted !== undefined && <span>Neu in DB: <strong style={{ color: '#16a34a' }}>{state.result.inserted}</strong></span>}
+              {state.result.deleted !== undefined && state.result.deleted > 0 && <span>Gelöscht: <strong style={{ color: '#dc2626' }}>{state.result.deleted}</strong></span>}
               {state.result.msg && !state.result.fetched && <span style={{ color: '#16a34a' }}>{state.result.msg}</span>}
               {state.result.by_source && (
                 <span style={{ color: 'var(--txt3)', fontSize: 10 }}>

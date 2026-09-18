@@ -129,3 +129,44 @@ export async function deactivateOldJobs(maxTage = 30): Promise<number> {
 
   return (r1.data?.length || 0) + (r2.data?.length || 0)
 }
+
+/**
+ * Löscht Stellen endgültig, die älter als maxTage sind:
+ * - datum älter als maxTage (egal ob aktiv oder nicht), oder
+ * - datum leer/NULL UND found_at älter als maxTage (Karteileichen ohne Datum)
+ * Favoriten hängen per ON DELETE CASCADE an jobs und werden mitgelöscht.
+ * Gibt { deleted, dated, dateless } zurück.
+ */
+export async function deleteOldJobs(maxTage = 30): Promise<{
+  deleted: number
+  dated: number
+  dateless: number
+}> {
+  const cutoffDate = new Date(Date.now() - maxTage * 86_400_000)
+    .toISOString()
+    .slice(0, 10) // jobs.datum ist date
+  const cutoffTs = new Date(Date.now() - maxTage * 86_400_000).toISOString()
+
+  // 1. Jobs mit altem Veröffentlichungsdatum — hart löschen
+  const r1 = await db
+    .from('jobs')
+    .delete()
+    .not('datum', 'is', null)
+    .neq('datum', '')
+    .lt('datum', cutoffDate)
+    .select('id')
+  if (r1.error) throw new Error(`DB delete error (dated): ${r1.error.message}`)
+
+  // 2. Jobs ohne Datum, die seit maxTage nicht mehr gefunden wurden
+  const r2 = await db
+    .from('jobs')
+    .delete()
+    .or('datum.is.null,datum.eq.')
+    .lt('found_at', cutoffTs)
+    .select('id')
+  if (r2.error) throw new Error(`DB delete error (dateless): ${r2.error.message}`)
+
+  const dated = r1.data?.length || 0
+  const dateless = r2.data?.length || 0
+  return { deleted: dated + dateless, dated, dateless }
+}
