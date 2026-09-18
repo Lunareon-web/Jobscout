@@ -3,7 +3,7 @@
  * Läuft manuell oder täglich via Cron.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
 
 const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs'
@@ -26,15 +26,18 @@ const JOBTITEL = [
   'Shop Konzept', 'Retail Designer', 'Store Designer', 'Schaufenstergestalter',
 ]
 
-// KldB Berufsgruppen — Architektur, Design, Management, Projektmgmt
+// KldB 2010 Berufsgruppen (5-stellig, nur erste 4 Stellen für BA-API)
+// Quelle: https://statistik.arbeitsagentur.de/DE/Navigation/Grundlagen/Klassifikationen/Klassifikation-der-Berufe/KldB2010/KldB2010-Nav.html
 const BERUFSGRUPPEN = [
-  '7310', '7311', '7312', '7313',  // Architektur & Innenarchitektur
-  '7320', '7321', '7322', '7323',  // Produkt-/Industrie-/Grafikdesign
-  '7130', '7131', '7132',          // Unternehmensberatung & Management
-  '7140', '7141',                  // Projektmanagement
-  '7150', '7151',                  // Marketing & PR
-  '7160', '7161',                  // Veranstaltungsmanagement
+  '3131',  // Innenarchitektur
+  '3132',  // Architektur
+  '3141',  // Produkt-/Industriedesign
+  '3142',  // Grafik-/Kommunikationsdesign
+  '3143',  // Mode-/Textildesign
+  '2153',  // Werbung, Marketing, PR
 ]
+
+const JOBTITEL_RE = /designer|innenarchitekt|interior|architekt|raumplan|raumgestalt|concept|brand|visual|merchandis|manager|projektleit|projektmanager|project\s*man|bauleiter|kreativ|director|ladenbauer|messebau|ausstellung|grafik|marketing|shopkonzept|retail\s*design|store\s*design|workplace/i
 
 async function baFetch(url: string): Promise<any[]> {
   try {
@@ -90,10 +93,11 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       r.value.forEach(s => raw.push(normalize(s, 'BA Berufsgruppen')))
   })
 
-  // ── Deduplizieren nach URL ───────────────────────────────────────────
+  // ── Relevanzfilter + Deduplizierung ─────────────────────────────────
   const seen = new Set<string>()
   const deduped = raw.filter(j => {
     if (!j.titel || j.titel.length < 2) return false
+    if (!JOBTITEL_RE.test(j.titel)) return false
     const key = j.url.toLowerCase()
     if (seen.has(key)) return false
     seen.add(key)
@@ -104,6 +108,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   let error: string | undefined
   try {
     inserted = await upsertJobs(deduped)
+    await deactivateOldJobs(30)
   } catch (e) {
     error = String(e)
   }

@@ -4,12 +4,14 @@ export interface Job {
   unternehmen: string
   ort: string
   plz: string
-  datum: string // ISO date string
+  datum: string // ISO date string (kann leer sein bei Direkt-Funden)
   url: string
   quelle: string
   beschreibung: string
   arbeitszeit: string
   kategorie: JobCategory
+  found_at?: string // wann (wieder-)gefunden — Fallback für Altersfilter
+  created_at?: string
 }
 
 export type JobCategory = 'design' | 'interior' | 'architektur' | 'management' | 'sonstiges'

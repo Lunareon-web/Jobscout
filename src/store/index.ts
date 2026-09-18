@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import type {
   Job, SearchLog, SearchConfig, SortOption, FilterCategory, SearchPhase
 } from '../types'
-import { deduplicateJobs } from '../lib/utils'
+import { deduplicateJobs, isJobFresh } from '../lib/utils'
 
 const DEFAULT_CONFIG: SearchConfig = {
   standort: 'Düsseldorf',
@@ -109,8 +109,12 @@ export const useStore = create<AppState>()(
       setConfig: config => set(state => ({ config: { ...state.config, ...config } })),
 
       getFilteredJobs: () => {
-        const { jobs, filterQ, sortBy, filterCategory, favoritesOnly, favorites } = get()
+        const { jobs, filterQ, sortBy, filterCategory, favoritesOnly, favorites, config } = get()
         let src = [...jobs]
+
+        // Altersfilter: maxTage aus Config (Fallback found_at/created_at bei leerem datum)
+        const maxTage = Math.min(Math.max(config.maxTage || 30, 1), 60)
+        src = src.filter(j => isJobFresh(j, maxTage))
 
         if (favoritesOnly) src = src.filter(j => favorites.has(j.id))
 
@@ -141,9 +145,11 @@ export const useStore = create<AppState>()(
       },
 
       getCategoryCounts: () => {
-        const { jobs } = get()
-        const counts: Record<string, number> = { all: jobs.length, direkt: 0 }
-        jobs.forEach(j => {
+        const { jobs, config } = get()
+        const maxTage = Math.min(Math.max(config.maxTage || 30, 1), 60)
+        const fresh = jobs.filter(j => isJobFresh(j, maxTage))
+        const counts: Record<string, number> = { all: fresh.length, direkt: 0 }
+        fresh.forEach(j => {
           counts[j.kategorie] = (counts[j.kategorie] || 0) + 1
           if (j.quelle.toLowerCase().includes('direkt')) counts.direkt++
         })

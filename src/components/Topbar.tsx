@@ -1,6 +1,5 @@
 import { Search, Download, Settings, RefreshCw } from 'lucide-react'
 import { useStore } from '../store'
-import { useSupabaseJobs } from '../hooks/useSupabaseJobs'
 import type { SearchPhase } from '../types'
 
 const PHASE_LABELS: Record<SearchPhase, string> = {
@@ -16,11 +15,12 @@ interface Props {
   onSearch: () => void
   onSettings: () => void
   onExport: () => void
+  onReloadDb: () => void
+  dbLoading: boolean
 }
 
-export function Topbar({ onSearch, onSettings, onExport }: Props) {
+export function Topbar({ onSearch, onSettings, onExport, onReloadDb, dbLoading }: Props) {
   const { searchPhase, jobs, lastSearchAt } = useStore()
-  const { loadFromSupabase, loading: dbLoading } = useSupabaseJobs()
   const isRunning = searchPhase !== 'idle' && searchPhase !== 'done' && searchPhase !== 'error'
   const phaseLabel = PHASE_LABELS[searchPhase]
 
@@ -76,7 +76,7 @@ export function Topbar({ onSearch, onSettings, onExport }: Props) {
       {/* Actions */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <button
-          onClick={loadFromSupabase}
+          onClick={onReloadDb}
           disabled={dbLoading}
           title="Neue Crawler-Ergebnisse laden (auto: 60s)"
           style={{

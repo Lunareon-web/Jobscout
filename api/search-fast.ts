@@ -10,12 +10,14 @@ const JOBTITEL_DEFAULT = [
   'Brand Designer', 'Visual Merchandiser',
 ]
 
-// KldB Berufsgruppen für Design/Architektur/Management
+// KldB Berufsgruppen für Design/Interior/Architektur/Marketing (wie cron/ba.ts)
 const BERUFSGRUPPEN = [
-  '7310', '7311', '7312', '7313', // Architektur & Innenarchitektur
-  '7320', '7321', '7322', '7323', // Produkt-/Industrie-/Grafikdesign
-  '7130', '7131', '7132',         // Unternehmensberatung & Management
-  '7140', '7141',                 // Projektmanagement
+  '3131', // Innenarchitektur
+  '3132', // Architektur
+  '3141', // Produkt-/Industriedesign
+  '3142', // Grafik-/Kommunikationsdesign
+  '3143', // Mode-/Textildesign
+  '2153', // Werbung, Marketing, PR
 ]
 
 function normalizeBA(s: any) {
@@ -86,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const bgResponses = await Promise.all(
       BERUFSGRUPPEN.map(grp =>
         fetch(`${BA_API}?wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&berufsgruppe=${grp}&angebotsart=1&size=25&page=0`,
-          { headers: { 'X-API-Key': BA_KEY } })
+          { headers: { 'X-API-Key': BA_KEY }, signal: AbortSignal.timeout(8000) })
           .then(r => r.ok ? r.json() : null)
           .catch(() => null)
       )

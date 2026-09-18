@@ -41,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         arbeitszeit: j.arbeitszeit || null,
         kategorie: j.kategorie || 'sonstiges',
         search_run_id: run.id,
+        is_active: true,
+        found_at: new Date().toISOString(),
       }))
 
       const { error } = await supabase.from('jobs').upsert(batch, { onConflict: 'id' })

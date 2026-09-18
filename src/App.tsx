@@ -55,7 +55,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--page)' }}>
-      <Topbar onSearch={handleSearch} onSettings={() => setActiveTab('settings')} onExport={handleExport} />
+      <Topbar onSearch={handleSearch} onSettings={() => setActiveTab('settings')} onExport={handleExport} onReloadDb={loadFromSupabase} dbLoading={supabaseLoading} />
       <div style={{ display: 'flex', flex: 1 }}>
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         <main style={{

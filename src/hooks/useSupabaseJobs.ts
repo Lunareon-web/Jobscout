@@ -24,6 +24,8 @@ function mapRow(row: any): Job {
     beschreibung: row.beschreibung || '',
     arbeitszeit: row.arbeitszeit || '',
     kategorie: classifyJob(row.titel),
+    found_at: row.found_at || undefined,
+    created_at: row.created_at || undefined,
   }
 }
 
@@ -39,7 +41,7 @@ export function useSupabaseJobs() {
         .from('jobs')
         .select('*')
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
+        .order('found_at', { ascending: false })
         .limit(SUPABASE_LOAD_LIMIT)
 
       if (error) throw error
@@ -64,10 +66,12 @@ export function useSupabaseJobs() {
     }
   }
 
-  // Load on mount + auto-refresh every 30 seconds
+  // Load on mount + auto-refresh every 60 seconds
+  // Hinweis: nur EINE Instanz mounten (App.tsx) — Topbar bekommt loadFromSupabase als Prop,
+  // sonst doppelte Queries alle 30s.
   useEffect(() => {
     loadFromSupabase()
-    const iv = setInterval(loadFromSupabase, 30_000)
+    const iv = setInterval(loadFromSupabase, 60_000)
     return () => clearInterval(iv)
   }, [])
 

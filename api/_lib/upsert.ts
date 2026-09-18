@@ -68,7 +68,43 @@ export async function upsertJobs(jobs: CrawledJob[]): Promise<number> {
     const { error } = await db
       .from('jobs')
       .upsert(rows.slice(i, i + 50), { onConflict: 'id', ignoreDuplicates: false })
-    if (!error) inserted += Math.min(50, rows.length - i)
+    if (error) throw new Error(`DB upsert error: ${error.message} (code: ${error.code})`)
+    inserted += Math.min(50, rows.length - i)
   }
   return inserted
+}
+
+/**
+ * Deaktiviert alte Stellen (is_active=false), damit sie nicht mehr
+ * im Frontend auftauchen:
+ * - datum älter als maxTage, oder
+ * - datum leer UND found_at älter als maxTage (Direkt-Funde ohne Datum)
+ * Gibt Anzahl deaktivierter Rows zurück.
+ */
+export async function deactivateOldJobs(maxTage = 30): Promise<number> {
+  const cutoffDate = new Date(Date.now() - maxTage * 86_400_000)
+    .toISOString()
+    .slice(0, 10) // jobs.datum ist date
+  const cutoffTs = new Date(Date.now() - maxTage * 86_400_000).toISOString()
+
+  // 1. Jobs mit altem Veröffentlichungsdatum
+  const r1 = await db
+    .from('jobs')
+    .update({ is_active: false })
+    .eq('is_active', true)
+    .not('datum', 'is', null)
+    .neq('datum', '')
+    .lt('datum', cutoffDate)
+    .select('id')
+
+  // 2. Jobs ohne Datum, aber lange nicht mehr gefunden (Karteileichen)
+  const r2 = await db
+    .from('jobs')
+    .update({ is_active: false })
+    .eq('is_active', true)
+    .or('datum.is.null,datum.eq.')
+    .lt('found_at', cutoffTs)
+    .select('id')
+
+  return (r1.data?.length || 0) + (r2.data?.length || 0)
 }

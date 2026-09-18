@@ -112,7 +112,7 @@ function parseLinkScan(html: string, firma: string, ort: string, keyRe: RegExp):
       if (base) href = base[1] + (href.startsWith('/') ? href : '/' + href)
     }
     if (!href.startsWith('http')) continue
-    jobs.push({ titel: txt, unternehmen: firma, ort, plz: '', datum: '', url: href, quelle: `Direkt: ${firma}`, beschreibung: '', arbeitszeit: '' })
+    jobs.push({ titel: txt, unternehmen: firma, ort, plz: '', datum: new Date().toISOString().slice(0, 10), url: href, quelle: `Direkt: ${firma}`, beschreibung: '', arbeitszeit: '' })
   }
   return jobs
 }

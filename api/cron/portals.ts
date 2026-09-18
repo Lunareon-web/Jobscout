@@ -1,223 +1,119 @@
 /**
- * Cron: Jobportale — Edge Runtime (Cloudflare CDN-IPs, weniger IP-Blocking als AWS Lambda)
- * Quellen: Kimeta, Indeed, Karriere.de, Stellenanzeigen.de, Kalaydo, StepStone, Jobware
+ * Cron: Jobportale via Jina + Gemini
+ * RSS von Vercel AWS-IPs wird von allen deutschen Portalen geblockt.
+ * Lösung: Jina Reader (andere IPs) + Gemini zur Job-Extraktion.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { XMLParser } from 'fast-xml-parser'
-import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
-import { stripHtml, parsePubDate, slugify, safeFetch } from '../_lib/helpers'
+import { slugify } from '../_lib/helpers'
 
-const JOBTITEL = [
-  'Projektmanager', 'Project Manager', 'Design Manager',
-  'Designer', 'Produktdesigner', 'Interior Designer',
-  'Innenarchitekt', 'Raumplaner', 'Concept Designer',
-  'Brand Designer', 'Visual Merchandiser', 'Architekt',
-  'Bauleiter', 'Kreativdirektor', 'Art Director',
-]
 const STANDORT = 'Düsseldorf'
 const UMKREIS = 50
-const MAX_TAGE = 30
 
-// ── RSS Parser ────────────────────────────────────────────────────────────────
+const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan/i
 
-function parseRSS(xml: string, quelle: string): CrawledJob[] {
-  if (!xml || xml.length < 50 || xml.trimStart().startsWith('<!DOCTYPE')) return []
-  const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: true })
-  const jobs: CrawledJob[] = []
+// Eine breite Suche pro Portal — Jina umgeht IP-Blocking von Vercel
+const PORTAL_URLS: Record<string, string> = {
+  karriere:        `https://www.karriere.de/jobs?what=Designer+Innenarchitekt+Architekt&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
+  stepstone:       `https://www.stepstone.de/jobs/designer/in-${slugify(STANDORT)}/?radius=${UMKREIS}&sort=date`,
+  kimeta:          `https://www.kimeta.de/stellenangebote/?q=Designer+Architekt+Projektmanager&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}`,
+  indeed:          `https://de.indeed.com/jobs?q=Designer+Innenarchitekt&l=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}&sort=date`,
+  stellenanzeigen: `https://www.stellenanzeigen.de/stellenangebote/${encodeURIComponent(STANDORT)}/designer/`,
+  jobware:         `https://www.jobware.de/suche/?q=Designer+Architekt&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}`,
+  kalaydo:         `https://www.kalaydo.de/jobs/ergebnisse/?what=Designer&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
+}
+
+async function jinaFetch(url: string): Promise<string> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 20000)
   try {
-    const result = parser.parse(xml)
-    const channel = result?.rss?.channel || result?.feed || result?.['rdf:RDF']
-    if (!channel) return rssRegexFallback(xml, quelle)
-    const items = [
-      ...(Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : []),
-      ...(Array.isArray(channel.entry) ? channel.entry : channel.entry ? [channel.entry] : []),
-    ]
-    items.forEach(item => {
-      const titel = stripHtml(String(item.title || ''))
-      if (!titel || titel.length < 3) return
-      const url = String(item.link?.['#text'] || item.link || item.guid?.['#text'] || item.guid || '')
-      const datum = parsePubDate(String(item.pubDate || item.published || item.updated || ''))
-      const firma = stripHtml(String(item.author || item['dc:creator'] || item['job:company'] || ''))
-      const ort = stripHtml(String(item['job:location'] || item.location || STANDORT))
-      const desc = stripHtml(String(item.description || item.summary || '')).slice(0, 200)
-      jobs.push({ titel, unternehmen: firma, ort, plz: '', datum, url, quelle, beschreibung: desc, arbeitszeit: '', kategorie: classifyJob(titel) })
+    const r = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { 'Accept': 'text/markdown', 'X-Timeout': '18' },
+      signal: ctrl.signal,
     })
-  } catch {
-    return rssRegexFallback(xml, quelle)
-  }
-  return jobs
+    clearTimeout(t)
+    return r.ok ? r.text() : ''
+  } catch { clearTimeout(t); return '' }
 }
 
-function rssRegexFallback(xml: string, quelle: string): CrawledJob[] {
-  const jobs: CrawledJob[] = []
-  if (!xml || xml.trimStart().startsWith('<!DOCTYPE')) return jobs
-  const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi
-  let m: RegExpExecArray | null
-  while ((m = itemRe.exec(xml)) !== null) {
-    const block = m[1]
-    const titleM = block.match(/<title[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([^<]*))<\/title>/i)
-    const linkM  = block.match(/<link[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([^<]*))<\/link>/i)
-    const dateM  = block.match(/<pubDate[^>]*>([^<]*)<\/pubDate>/i)
-    const titel  = stripHtml(titleM ? (titleM[1] || titleM[2] || '') : '')
-    if (!titel || titel.length < 3) continue
-    jobs.push({
-      titel, unternehmen: '', ort: STANDORT, plz: '',
-      datum: parsePubDate(dateM?.[1] || ''),
-      url: linkM ? (linkM[1] || linkM[2] || '') : '',
-      quelle, beschreibung: '', arbeitszeit: '',
-      kategorie: classifyJob(titel),
+async function geminiExtract(markdown: string, portalName: string, apiKey: string): Promise<CrawledJob[]> {
+  if (!markdown || !apiKey) return []
+  const prompt = `Job-Portal: ${portalName}. Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus der Seite.
+Antworte NUR mit JSON-Array, kein Text:
+[{"titel":"...","unternehmen":"...","ort":"...","url":"https://..."}]
+Leeres Array [] wenn keine passenden Stellen gefunden.
+Seite:\n${markdown.slice(0, 4000)}`
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), 25000)
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+        }),
+        signal: ctrl.signal,
+      }
+    )
+    clearTimeout(t)
+    if (!r.ok) return []
+    const data = await r.json()
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    const arr = JSON.parse(raw || '[]')
+    return Array.isArray(arr)
+      ? arr.filter((j: any) => j.titel && PORTAL_RELEVANZ.test(j.titel)).map((j: any) => ({
+          titel: j.titel, unternehmen: j.unternehmen || '', ort: j.ort || STANDORT,
+          plz: '', datum: new Date().toISOString().slice(0, 10), url: j.url || '', quelle: portalName,
+          beschreibung: '', arbeitszeit: '', kategorie: classifyJob(j.titel),
+        }))
+      : []
+  } catch { clearTimeout(t); return [] }
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') return res.status(200).end()
+
+  const geminiKey: string =
+    (typeof req.body === 'object' ? req.body?.gemini_key : '') ||
+    process.env.GEMINI_API_KEY || ''
+
+  if (!geminiKey) {
+    return res.status(200).json({
+      ok: false, source: 'portals', fetched: 0, deduped: 0, inserted: 0,
+      error: 'Kein Gemini API Key — alle Portale brauchen Jina+Gemini (RSS von Vercel-IPs geblockt)',
+      by_source: {},
     })
   }
-  return jobs
-}
 
-function parseJsonLd(html: string, quelle: string): CrawledJob[] {
-  if (!html || html.trimStart().startsWith('<!DOCTYPE')) return []
-  const jobs: CrawledJob[] = []
-  const re = /<script[^>]+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html)) !== null) {
-    try {
-      const obj = JSON.parse(m[1].trim())
-      const items: any[] = Array.isArray(obj) ? obj : (obj['@graph'] || [obj])
-      items.forEach(item => {
-        if (item?.['@type'] !== 'JobPosting') return
-        const titel = item.title || ''
-        if (!titel) return
-        jobs.push({
-          titel, unternehmen: item.hiringOrganization?.name || '',
-          ort: item.jobLocation?.address?.addressLocality || STANDORT,
-          plz: item.jobLocation?.address?.postalCode || '',
-          datum: item.datePosted || '',
-          url: item.url || item['@id'] || '',
-          quelle, beschreibung: stripHtml(item.description || '').slice(0, 200),
-          arbeitszeit: item.employmentType || '',
-          kategorie: classifyJob(titel),
-        })
-      })
-    } catch {}
-  }
-  return jobs
-}
-
-// ── Quellen ───────────────────────────────────────────────────────────────────
-
-// Kimeta: oft geblockt, fallback auf JSON-LD wenn RSS leer
-async function fetchKimeta(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 8).map(t => safeFetch(
-      `https://www.kimeta.de/stellenangebote/?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}&output=rss`,
-      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Feedfetcher-Google/1.0)' } }
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Kimeta RSS') : [])
-  return { jobs, count: jobs.length }
-}
-
-// Indeed RSS — alternativer User-Agent
-async function fetchIndeed(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 5).map(t => safeFetch(
-      `https://de.indeed.com/rss?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}&fromage=${MAX_TAGE}&sort=date`,
-      { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' } }
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Indeed') : [])
-  return { jobs, count: jobs.length }
-}
-
-// Karriere.de RSS
-async function fetchKarriere(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 8).map(t => safeFetch(
-      `https://www.karriere.de/jobs/rss?what=${encodeURIComponent(t)}&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Karriere.de') : [])
-  return { jobs, count: jobs.length }
-}
-
-// Stellenanzeigen.de RSS
-async function fetchStellenanzeigen(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 8).map(t => safeFetch(
-      `https://www.stellenanzeigen.de/job-ticker/rss.xml?suchbegriff=${encodeURIComponent(t)}&arbeitsort=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}`
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Stellenanzeigen.de') : [])
-  return { jobs, count: jobs.length }
-}
-
-// Kalaydo — regional NRW, JSON-LD
-async function fetchKalaydo(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 6).map(t => safeFetch(
-      `https://www.kalaydo.de/jobs/ergebnisse/?what=${encodeURIComponent(t)}&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'de-DE' } }
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseJsonLd(r.value, 'Kalaydo (Rheinland)') : [])
-  return { jobs, count: jobs.length }
-}
-
-// StepStone — JSON-LD aus HTML
-async function fetchStepStone(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 6).map(t => safeFetch(
-      `https://www.stepstone.de/jobs/${slugify(t)}/in-${slugify(STANDORT)}/?radius=${UMKREIS}&sort=date&fromage=${MAX_TAGE}`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'de-DE,de;q=0.9' } }
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseJsonLd(r.value, 'StepStone') : [])
-  return { jobs, count: jobs.length }
-}
-
-// Jobware RSS
-async function fetchJobware(): Promise<{ jobs: CrawledJob[]; count: number }> {
-  const results = await Promise.allSettled(
-    JOBTITEL.slice(0, 6).map(t => safeFetch(
-      `https://www.jobware.de/suche/?q=${encodeURIComponent(t)}&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}&format=rss`
-    ))
-  )
-  const jobs = results.flatMap(r => r.status === 'fulfilled' ? parseRSS(r.value, 'Jobware') : [])
-  return { jobs, count: jobs.length }
-}
-
-// ── Handler ───────────────────────────────────────────────────────────────────
-
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
   const runId = await startCrawlRun('portals')
 
-  const [kimeta, indeed, karriere, stellenanzeigen, kalaydo, stepstone, jobware] =
-    await Promise.allSettled([
-      fetchKimeta(), fetchIndeed(), fetchKarriere(),
-      fetchStellenanzeigen(), fetchKalaydo(), fetchStepStone(), fetchJobware(),
-    ])
-
-  const sources = [
-    { name: 'kimeta',          r: kimeta },
-    { name: 'indeed',          r: indeed },
-    { name: 'karriere',        r: karriere },
-    { name: 'stellenanzeigen', r: stellenanzeigen },
-    { name: 'kalaydo',         r: kalaydo },
-    { name: 'stepstone',       r: stepstone },
-    { name: 'jobware',         r: jobware },
-  ]
+  // Alle Portale parallel via Jina + Gemini
+  const results = await Promise.allSettled(
+    Object.entries(PORTAL_URLS).map(async ([name, url]) => {
+      const md = await jinaFetch(url)
+      const jobs = await geminiExtract(md, name, geminiKey)
+      return { name, jobs, mdLen: md.length, mdSnippet: md.slice(0, 120) }
+    })
+  )
 
   const allJobs: CrawledJob[] = []
   const bySource: Record<string, number> = {}
-
-  for (const { name, r } of sources) {
+  const debug: Record<string, { chars: number; snippet: string }> = {}
+  for (const r of results) {
     if (r.status === 'fulfilled') {
       allJobs.push(...r.value.jobs)
-      bySource[name] = r.value.count
-    } else {
-      bySource[name] = -1
+      bySource[r.value.name] = r.value.jobs.length
+      debug[r.value.name] = { chars: r.value.mdLen, snippet: r.value.mdSnippet }
     }
   }
 
-  // Deduplizieren
   const seen = new Set<string>()
   const deduped = allJobs.filter(j => {
     if (!j.titel || j.titel.length < 3) return false
@@ -231,6 +127,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   let error: string | undefined
   try {
     inserted = await upsertJobs(deduped)
+    await deactivateOldJobs(30)
   } catch (e) {
     error = String(e)
   }
@@ -245,6 +142,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     deduped: deduped.length,
     inserted,
     ts: new Date().toISOString(),
+    debug,
     ...(error ? { error } : {}),
   })
 }

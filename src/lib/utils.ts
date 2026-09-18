@@ -9,7 +9,25 @@ export function classifyJob(titel: string): JobCategory {
   return 'sonstiges'
 }
 
-export function daysSince(dateStr: string | null): number | null {
+export function jobEffectiveDate(j: { datum?: string | null; found_at?: string | null; created_at?: string | null }): Date | null {
+  // Primär: Veröffentlichungsdatum; Fallback: found_at/created_at (für Direkt-Funde ohne Datum)
+  for (const raw of [j.datum, j.found_at, j.created_at]) {
+    if (!raw) continue
+    const d = new Date(raw)
+    if (!isNaN(d.getTime())) return d
+  }
+  return null
+}
+
+export function isJobFresh(
+  j: { datum?: string | null; found_at?: string | null; created_at?: string | null },
+  maxTage: number,
+): boolean {
+  const d = jobEffectiveDate(j)
+  if (!d) return true // ohne jedes Datum nicht ausblenden (wäre sonst Direkt-Fund-Verlust)
+  return Date.now() - d.getTime() <= maxTage * 86_400_000
+}
+export function daysSince(dateStr: string | null | undefined): number | null {
   if (!dateStr) return null
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return null

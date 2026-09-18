@@ -4,7 +4,7 @@
  * Strategien: Greenhouse API → Lever API → JSON-LD → __NEXT_DATA__ → Link-Scan
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, type CrawledJob } from '../_lib/upsert'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
 import { stripHtml, safeFetch } from '../_lib/helpers'
 import { db } from '../_lib/db'
@@ -78,7 +78,7 @@ async function fetchGreenhouse(slug: string, firma: string, ort: string): Promis
         titel: j.title || '',
         unternehmen: firma,
         ort: j.location?.name || ort,
-        plz: '', datum: '',
+        plz: '', datum: new Date().toISOString().slice(0, 10),
         url: j.absolute_url || '',
         quelle: `Direkt: ${firma}`,
         beschreibung: '',
@@ -196,7 +196,7 @@ function parseLinkScan(html: string, firma: string, ort: string, baseUrl: string
     }
     if (!href.startsWith('http')) continue
     jobs.push({
-      titel: txt, unternehmen: firma, ort, plz: '', datum: '',
+      titel: txt, unternehmen: firma, ort, plz: '', datum: new Date().toISOString().slice(0, 10),
       url: href, quelle: `Direkt: ${firma}`, beschreibung: '', arbeitszeit: '',
       kategorie: classifyJob(txt),
     })
@@ -206,7 +206,66 @@ function parseLinkScan(html: string, firma: string, ort: string, baseUrl: string
 
 // ── Handler ────────────────────────────────────────────────────────────────────
 
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
+// ── Jina + Gemini Fallback für JS-SPAs ───────────────────────────────────────
+
+async function jinaFetch(url: string): Promise<string> {
+  try {
+    const r = await safeFetch(`https://r.jina.ai/${url}`, {
+      headers: { 'Accept': 'text/markdown', 'X-Timeout': '20' }
+    }, 25000)
+    return r
+  } catch { return '' }
+}
+
+async function geminiExtract(markdown: string, firma: string, careerUrl: string, apiKey: string): Promise<CrawledJob[]> {
+  if (!markdown || !apiKey) return []
+  const prompt = `Karriere-Seite von "${firma}". Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Management, Projektmanagement.
+Antworte NUR mit einem JSON-Array. Leeres Array [] wenn keine passenden Stellen:
+[{"titel": "Jobtitel", "url": "https://...", "ort": "Stadt"}]
+Falls keine URL: ${careerUrl}
+Seite:\n${markdown.slice(0, 3500)}`
+
+  try {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+        }),
+        signal: AbortSignal.timeout(30000),
+      }
+    )
+    if (!r.ok) return []
+    const data = await r.json()
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    const arr = JSON.parse(raw || '[]')
+    return Array.isArray(arr) ? arr.filter((j: any) => j.titel && JOBTITEL_RE.test(j.titel)).map((j: any) => ({
+      titel: j.titel || '',
+      unternehmen: firma,
+      ort: j.ort || '',
+      plz: '', datum: new Date().toISOString().slice(0, 10),
+      url: j.url || careerUrl,
+      quelle: `Direkt: ${firma}`,
+      beschreibung: '', arbeitszeit: '',
+      kategorie: classifyJob(j.titel || ''),
+    })) : []
+  } catch { return [] }
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') return res.status(200).end()
+
+  const geminiKey: string =
+    (typeof req.body === 'object' ? req.body?.gemini_key : '') ||
+    (req.headers['x-gemini-key'] as string) ||
+    process.env.GEMINI_API_KEY ||
+    ''
   const runId = await startCrawlRun('firmenseiten')
 
   // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
@@ -216,10 +275,12 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const knownSet = new Set((existingNames || []).map((r: any) => r.name.toLowerCase()))
 
   const newSeeds = SEED_FIRMEN.filter(f => !knownSet.has(f.name.toLowerCase()))
+  const seedErrors: string[] = []
   for (const f of newSeeds) {
-    await db.from('crawl_companies').insert(
+    const { error } = await db.from('crawl_companies').insert(
       { name: f.name, career_url: f.career_url, city: f.city, source: 'manual', is_active: true }
     )
+    if (error) seedErrors.push(`${f.name}: ${error.message}`)
   }
 
   // 2. Alle aktiven Firmen mit career_url aus DB laden
@@ -229,17 +290,24 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     .eq('is_active', true)
     .not('career_url', 'is', null)
     .order('last_crawled', { ascending: true, nullsFirst: true })
-    .limit(50)  // max 50 pro Durchlauf (Timeout-Schutz)
+    .limit(20)  // max 20 pro Run — 60s Vercel-Timeout
 
   const crawl_companies = (companyRows || []) as { id: string; name: string; career_url: string; city: string }[]
 
   if (!crawl_companies.length) {
-    return res.status(200).json({ ok: true, source: 'firmenseiten', msg: 'Keine Firmen in DB', inserted: 0 })
+    return res.status(200).json({
+      ok: seedErrors.length === 0,
+      source: 'firmenseiten',
+      msg: 'Keine Firmen in DB',
+      seeds_attempted: newSeeds.length,
+      seed_errors: seedErrors.slice(0, 3),
+      inserted: 0,
+    })
   }
 
-  // 3. Alle Career Pages parallel laden
+  // 3. Alle Career Pages parallel laden (8s Timeout — Platz für Jina-Fallback)
   const htmlResults = await Promise.allSettled(
-    crawl_companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 12000))
+    crawl_companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 8000))
   )
 
   // 4. ATS-APIs parallel aufrufen wo erkannt
@@ -289,8 +357,26 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
     // Link-Scan
     const links = parseLinkScan(html, c.name, c.city, c.career_url)
-    allJobs.push(...links)
-    log.push({ firma: c.name, count: links.length, strategy: links.length ? 'link-scan' : 'none' })
+    if (links.length) { allJobs.push(...links); log.push({ firma: c.name, count: links.length, strategy: 'link-scan' }); continue }
+
+    log.push({ firma: c.name, count: 0, strategy: 'none' })
+  }
+
+  // 5b. Jina + Gemini für max. 3 Firmen ohne Ergebnis (JS-SPAs)
+  if (geminiKey) {
+    const noResult = crawl_companies
+      .filter(c => !log.find(l => l.firma === c.name && l.count > 0))
+      .slice(0, 3)
+    for (const c of noResult) {
+      const md = await jinaFetch(c.career_url)
+      if (md) {
+        const gjobs = await geminiExtract(md, c.name, c.city, geminiKey)
+        if (gjobs.length) {
+          allJobs.push(...gjobs)
+          log.push({ firma: c.name, count: gjobs.length, strategy: 'jina-gemini' })
+        }
+      }
+    }
   }
 
   // 6. last_crawled aktualisieren
@@ -311,7 +397,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
   let inserted = 0
   let error: string | undefined
-  try { inserted = await upsertJobs(deduped) } catch (e) { error = String(e) }
+  try { inserted = await upsertJobs(deduped); await deactivateOldJobs(30) } catch (e) { error = String(e) }
 
   if (runId) await finishCrawlRun(runId, deduped.length, inserted, error ? 'error' : 'done', error)
 

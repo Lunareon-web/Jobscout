@@ -60,6 +60,25 @@ export function useSearch() {
     }
 
     setSearchPhase('done')
+
+    // Manuelle Treffer in Supabase persistieren, damit der 60s-DB-Reload
+    // (setJobs/REPLACE) sie nicht wieder verwirft. Fehler nur loggen.
+    try {
+      const state = useStore.getState()
+      if (state.jobs.length) {
+        await fetch(`${BASE}/api/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobs: state.jobs.slice(0, 500),
+            config: state.config,
+            log: state.searchLog,
+          }),
+        })
+      }
+    } catch (e) {
+      console.error('Sync after search failed:', e)
+    }
   }, [config, setSearchPhase, mergeJobs, clearJobs])
 
   return { startSearch }
