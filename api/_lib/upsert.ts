@@ -109,12 +109,12 @@ export async function deactivateOldJobs(maxTage = 30): Promise<number> {
   const cutoffTs = new Date(Date.now() - maxTage * 86_400_000).toISOString()
 
   // 1. Jobs mit altem Veröffentlichungsdatum
+  // (kein neq('') — datum ist date-Typ, ''-Literal crasht Postgres)
   const r1 = await db
     .from('jobs')
     .update({ is_active: false })
     .eq('is_active', true)
     .not('datum', 'is', null)
-    .neq('datum', '')
     .lt('datum', cutoffDate)
     .select('id')
 
@@ -123,7 +123,7 @@ export async function deactivateOldJobs(maxTage = 30): Promise<number> {
     .from('jobs')
     .update({ is_active: false })
     .eq('is_active', true)
-    .or('datum.is.null,datum.eq.')
+    .is('datum', null)
     .lt('found_at', cutoffTs)
     .select('id')
 
@@ -148,11 +148,12 @@ export async function deleteOldJobs(maxTage = 30): Promise<{
   const cutoffTs = new Date(Date.now() - maxTage * 86_400_000).toISOString()
 
   // 1. Jobs mit altem Veröffentlichungsdatum — hart löschen
+  // Hinweis: kein neq('')-Filter — datum ist date-Typ (NULL oder gültig),
+  // ein ''-Literal würde Postgres mit "invalid input syntax for type date" ablehnen.
   const r1 = await db
     .from('jobs')
     .delete()
     .not('datum', 'is', null)
-    .neq('datum', '')
     .lt('datum', cutoffDate)
     .select('id')
   if (r1.error) throw new Error(`DB delete error (dated): ${r1.error.message}`)
@@ -161,7 +162,7 @@ export async function deleteOldJobs(maxTage = 30): Promise<{
   const r2 = await db
     .from('jobs')
     .delete()
-    .or('datum.is.null,datum.eq.')
+    .is('datum', null)
     .lt('found_at', cutoffTs)
     .select('id')
   if (r2.error) throw new Error(`DB delete error (dateless): ${r2.error.message}`)
