@@ -6,10 +6,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
 
-const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs'
+const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs'
 const BA_KEY = 'jobboerse-jobsuche'
 const STANDORT = 'Düsseldorf'
 const UMKREIS = 60
+const MAX_TAGE = 30
 
 // Jobtitel — breite Abdeckung Design / Interior / Architektur / Management
 const JOBTITEL = [
@@ -47,11 +48,46 @@ async function baFetch(url: string): Promise<any[]> {
     })
     if (!r.ok) return []
     const data = await r.json()
-    return data?.stellenangebote || []
+    return data?.ergebnisliste || data?.stellenangebote || []
   } catch { return [] }
 }
 
+function toJobDetailUrl(referenznummer: string): string {
+  if (!referenznummer) return ''
+  const b64 = Buffer.from(referenznummer).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return `https://www.arbeitsagentur.de/jobsuche/jobdetail/${b64}`
+}
+
+function firstLocation(s: any): { ort: string; plz: string } {
+  const loc = Array.isArray(s.stellenlokationen)
+    ? s.stellenlokationen[0]
+    : s.stellenlokationen
+  return {
+    ort: loc?.adresse?.ort || STANDORT,
+    plz: loc?.adresse?.plz || '',
+  }
+}
+
 function normalize(s: any, quelle: string): CrawledJob {
+  // v6-Schema (ergebnisliste)
+  if (s.stellenangebotsTitel || s.referenznummer) {
+    const titel = s.stellenangebotsTitel || ''
+    const { ort, plz } = firstLocation(s)
+    const ref = s.referenznummer || ''
+    return {
+      titel,
+      unternehmen: s.firma || '',
+      ort,
+      plz,
+      datum: s.veroeffentlichungszeitraum?.von || s.datumErsteVeroeffentlichung || '',
+      url: toJobDetailUrl(ref),
+      quelle,
+      beschreibung: s.hauptberuf || (Array.isArray(s.alleBerufe) ? s.alleBerufe.join(', ') : ''),
+      arbeitszeit: s.arbeitszeitVollzeit === true ? 'Vollzeit' : s.arbeitszeitVollzeit === false ? 'Teilzeit' : '',
+      kategorie: classifyJob(titel),
+    }
+  }
   const titel = s.titel || ''
   return {
     titel,
@@ -71,10 +107,10 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const runId = await startCrawlRun('ba')
   const raw: CrawledJob[] = []
 
-  // ── 1. Titelsuche: alle Titel × 3 Seiten parallel ───────────────────
+  // ── 1. Titelsuche: alle Titel × 3 Seiten parallel (v6: Seiten ab 1) ──
   const titleUrls = JOBTITEL.flatMap(t =>
-    [0, 1, 2].map(p =>
-      `${BA_API}?was=${encodeURIComponent(t)}&wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&angebotsart=1&size=25&page=${p}`
+    [1, 2, 3].map(p =>
+      `${BA_API}?was=${encodeURIComponent(t)}&wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&angebotsart=1&veroeffentlichtseit=${MAX_TAGE}&size=25&page=${p}`
     )
   )
   const titleResults = await Promise.allSettled(titleUrls.map(baFetch))
@@ -85,7 +121,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
   // ── 2. KldB-Berufsgruppen parallel ──────────────────────────────────
   const bgUrls = BERUFSGRUPPEN.map(g =>
-    `${BA_API}?wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&berufsgruppe=${g}&angebotsart=1&size=50&page=0`
+    `${BA_API}?wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&berufsgruppe=${g}&angebotsart=1&veroeffentlichtseit=${MAX_TAGE}&size=50&page=1`
   )
   const bgResults = await Promise.allSettled(bgUrls.map(baFetch))
   bgResults.forEach(r => {
@@ -98,7 +134,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const deduped = raw.filter(j => {
     if (!j.titel || j.titel.length < 2) return false
     if (!JOBTITEL_RE.test(j.titel)) return false
-    const key = j.url.toLowerCase()
+    const key = (j.url || `${j.titel}|${j.unternehmen}`).toLowerCase()
     if (seen.has(key)) return false
     seen.add(key)
     return true

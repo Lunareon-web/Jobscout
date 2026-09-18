@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
-const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs'
+const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs'
 const BA_KEY = 'jobboerse-jobsuche'
 
 const JOBTITEL_DEFAULT = [
@@ -20,7 +20,42 @@ const BERUFSGRUPPEN = [
   '2153', // Werbung, Marketing, PR
 ]
 
+function toJobDetailUrl(referenznummer: string): string {
+  if (!referenznummer) return ''
+  // arbeitsagentur.de-Detailformat: base64url-kodierte Referenznummer
+  const b64 = Buffer.from(referenznummer).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return `https://www.arbeitsagentur.de/jobsuche/jobdetail/${b64}`
+}
+
+function firstLocation(s: any): { ort: string; plz: string } {
+  const loc = Array.isArray(s.stellenlokationen)
+    ? s.stellenlokationen[0]
+    : s.stellenlokationen
+  return {
+    ort: loc?.adresse?.ort || '',
+    plz: loc?.adresse?.plz || '',
+  }
+}
+
 function normalizeBA(s: any) {
+  // v6-Schema (ergebnisliste) mit v4-Fallback (stellenangebote)
+  if (s.stellenangebotsTitel || s.referenznummer) {
+    const { ort, plz } = firstLocation(s)
+    const ref = s.referenznummer || ''
+    return {
+      id: ref || Math.random().toString(36).slice(2),
+      titel: s.stellenangebotsTitel || '',
+      unternehmen: s.firma || '',
+      ort,
+      plz,
+      datum: s.veroeffentlichungszeitraum?.von || s.datumErsteVeroeffentlichung || '',
+      url: toJobDetailUrl(ref),
+      quelle: 'Bundesagentur für Arbeit',
+      beschreibung: s.hauptberuf || (Array.isArray(s.alleBerufe) ? s.alleBerufe.join(', ') : ''),
+      arbeitszeit: s.arbeitszeitVollzeit === true ? 'Vollzeit' : s.arbeitszeitVollzeit === false ? 'Teilzeit' : '',
+    }
+  }
   return {
     id: s.hashId || s.refnr || Math.random().toString(36).slice(2),
     titel: s.titel || '',
@@ -52,10 +87,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const jobs: any[] = []
   const log: any[] = []
 
-  // Titelsuche — alle Titel, 2 Seiten, alle parallel
+  // Titelsuche — alle Titel, 3 Seiten (v6: Seiten beginnen bei 1), alle parallel
+  // veroeffentlichtseit filtert serverseitig nach Alter
   const titleRequests = jobtitel.flatMap(titel =>
-    [0, 1, 2].map(page => // 3 Seiten statt 2
-      `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&size=25&page=${page}`
+    [1, 2, 3].map(page =>
+      `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&veroeffentlichtseit=${maxTage}&size=25&page=${page}`
     )
   )
 
@@ -72,8 +108,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       )
     )
     responses.forEach(r => {
-      if (r.status === 'fulfilled' && r.value?.stellenangebote) {
-        r.value.stellenangebote.forEach((s: any) => jobs.push(normalizeBA(s)))
+      if (r.status === 'fulfilled' && r.value) {
+        const list = r.value.ergebnisliste || r.value.stellenangebote || []
+        list.forEach((s: any) => jobs.push(normalizeBA(s)))
       }
     })
     log.push({ quelle: 'BA Titelsuche', anzahl: jobs.length, ms: Date.now() - t0, ok: true })
@@ -87,15 +124,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const bgResponses = await Promise.all(
       BERUFSGRUPPEN.map(grp =>
-        fetch(`${BA_API}?wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&berufsgruppe=${grp}&angebotsart=1&size=25&page=0`,
+        fetch(`${BA_API}?wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&berufsgruppe=${grp}&angebotsart=1&veroeffentlichtseit=${maxTage}&size=25&page=1`,
           { headers: { 'X-API-Key': BA_KEY }, signal: AbortSignal.timeout(8000) })
           .then(r => r.ok ? r.json() : null)
           .catch(() => null)
       )
     )
     bgResponses.forEach(data => {
-      if (!data?.stellenangebote) return
-      data.stellenangebote.forEach((s: any) => jobs.push(normalizeBA(s)))
+      const list = data?.ergebnisliste || data?.stellenangebote
+      if (!list) return
+      list.forEach((s: any) => jobs.push(normalizeBA(s)))
     })
     log.push({ quelle: 'BA Berufsgruppen (Design/Arch/Mgmt)', anzahl: jobs.length - bgCount0, ms: Date.now() - t1, ok: true })
   } catch (e) {
