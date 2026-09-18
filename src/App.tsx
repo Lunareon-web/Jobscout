@@ -82,14 +82,15 @@ export default function App() {
                     height: '100%',
                     background: 'linear-gradient(90deg, var(--accent), #7c74f2)',
                     borderRadius: 99,
-                    width: searchPhase === 'fast' ? '25%' : searchPhase === 'portals' ? '60%' : '85%',
+                    width: searchPhase === 'fast' ? '20%' : searchPhase === 'portals' ? '45%' : searchPhase === 'firmen' ? '70%' : '90%',
                     transition: 'width 600ms ease',
                   }} />
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 6, fontWeight: 500 }}>
-                  {searchPhase === 'fast'    && '1/3 — Bundesagentur für Arbeit (parallel)…'}
-                  {searchPhase === 'portals' && '2/3 — Portale: Kimeta, StepStone, RSS-Feeds…'}
-                  {searchPhase === 'firmen'  && '3/3 — 20 Firmenseiten direkt…'}
+                  {searchPhase === 'fast'    && '1/4 — Bundesagentur für Arbeit (parallel)…'}
+                  {searchPhase === 'portals' && '2/4 — Portale: Kimeta, StepStone, RSS-Feeds…'}
+                  {searchPhase === 'firmen'  && '3/4 — 20 Firmenseiten direkt…'}
+                  {searchPhase === 'linkedin' && '4/4 — LinkedIn…'}
                 </p>
               </div>
             )}
@@ -111,7 +112,7 @@ export default function App() {
                       Bereit zur Suche
                     </h2>
                     <p style={{ fontSize: 14, color: 'var(--txt2)', maxWidth: 380, margin: '0 auto 24px', lineHeight: 1.65 }}>
-                      Durchsucht <strong style={{ color: 'var(--txt)', fontWeight: 700 }}>BA-API + RSS-Feeds + 20 Firmenseiten</strong> parallel in 3 Stufen.
+                      Durchsucht <strong style={{ color: 'var(--txt)', fontWeight: 700 }}>BA-API + RSS-Feeds + 20 Firmenseiten + LinkedIn</strong> parallel in 4 Stufen.
                     </p>
                     <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                       <button

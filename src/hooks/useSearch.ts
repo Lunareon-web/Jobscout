@@ -59,6 +59,15 @@ export function useSearch() {
       console.error('Firmen search failed:', e)
     }
 
+    // Phase 4: LinkedIn via linkedin-jobs-api (~15s)
+    setSearchPhase('linkedin')
+    try {
+      const { jobs, log } = await callSearchApi('search-linkedin', params)
+      mergeJobs(jobs, log)
+    } catch (e) {
+      console.error('LinkedIn search failed:', e)
+    }
+
     setSearchPhase('done')
 
     // Manuelle Treffer in Supabase persistieren, damit der 60s-DB-Reload

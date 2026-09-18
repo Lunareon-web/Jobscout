@@ -4,9 +4,10 @@ import type { SearchPhase } from '../types'
 
 const PHASE_LABELS: Record<SearchPhase, string> = {
   idle:    '',
-  fast:    'Stufe 1/3 — Bundesagentur…',
-  portals: 'Stufe 2/3 — Portale + RSS…',
-  firmen:  'Stufe 3/3 — Firmenseiten…',
+  fast:    'Stufe 1/4 — Bundesagentur…',
+  portals: 'Stufe 2/4 — Portale + RSS…',
+  firmen:  'Stufe 3/4 — Firmenseiten…',
+  linkedin: 'Stufe 4/4 — LinkedIn…',
   done:    '',
   error:   'Fehler',
 }

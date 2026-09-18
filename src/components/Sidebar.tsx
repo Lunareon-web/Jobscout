@@ -313,6 +313,7 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
             {!isLive && searchPhase === 'fast'    && 'BA-API läuft…'}
             {!isLive && searchPhase === 'portals' && 'Portale werden durchsucht…'}
             {!isLive && searchPhase === 'firmen'  && 'Firmenseiten direkt…'}
+            {!isLive && searchPhase === 'linkedin' && 'LinkedIn…'}
           </div>
         </div>
       )}

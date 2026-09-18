@@ -8,6 +8,7 @@
   "crons": [
     { "path": "/api/cron/ba", "schedule": "0 5 * * *" },
     { "path": "/api/cron/portals", "schedule": "30 5 * * *" },
+    { "path": "/api/cron/linkedin", "schedule": "45 5 * * *" },
     { "path": "/api/cron/firmenseiten", "schedule": "0 6 * * *" },
     { "path": "/api/cron/discover", "schedule": "30 6 * * *" },
     { "path": "/api/cron/cleanup?max_tage=30", "schedule": "0 7 * * *" }
