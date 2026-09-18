@@ -14,10 +14,25 @@ export interface CrawledJob {
   kategorie: JobKategorie
 }
 
+function hashStr(s: string): string {
+  // cyrb53 — deterministischer Hash, damit gleiche Jobs immer gleiche IDs bekommen
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36)
+}
+
 function makeId(job: CrawledJob): string {
-  // Stable, URL-based ID for deduplication
-  const key = job.url || `${job.titel}||${job.unternehmen}`
-  return key.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 64)
+  // Volle URL hashen statt trunkieren: trunkierte URLs kollidieren
+  // (alle BA-URLs teilen sich 41+ identische Prefix-Zeichen → Code 21000).
+  const key = (job.url || `${job.titel}||${job.unternehmen}`).toLowerCase()
+  const slug = key.replace(/[^a-z0-9]/g, '').slice(0, 40)
+  return `${slug}_${hashStr(key)}`.slice(0, 64)
 }
 
 export async function startCrawlRun(source: string): Promise<string | null> {
@@ -47,7 +62,13 @@ export async function finishCrawlRun(
 
 export async function upsertJobs(jobs: CrawledJob[]): Promise<number> {
   if (!jobs.length) return 0
-  const rows = jobs.map(j => ({
+  // Intra-Batch-Dedup nach ID (Sicherheitsnetz gegen Code 21000)
+  const byId = new Map<string, (typeof jobs)[number]>()
+  jobs.forEach(j => {
+    const tmp = { titel: j.titel, unternehmen: j.unternehmen, url: j.url } as CrawledJob
+    byId.set(makeId(tmp), j)
+  })
+  const rows = [...byId.values()].map(j => ({
     id: makeId(j),
     titel: j.titel,
     unternehmen: j.unternehmen,
