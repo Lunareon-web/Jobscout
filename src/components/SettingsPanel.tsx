@@ -1,6 +1,6 @@
 import { Save, RotateCcw, Zap, CheckCircle } from 'lucide-react'
 import { useStore } from '../store'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { toast } from 'react-hot-toast'
 
 const DEFAULT_JOBTITEL = [
@@ -30,6 +30,10 @@ export function SettingsPanel() {
   const { config, setConfig } = useStore()
 
   async function save() {
+    if (!isSupabaseConfigured) {
+      toast.error('Supabase nicht konfiguriert — nur lokal gespeichert')
+      return
+    }
     // Save to Supabase so the Discovery Agent can read it
     const { error } = await supabase.from('app_config').upsert({
       key: 'search_config',

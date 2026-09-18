@@ -3,7 +3,7 @@ import {
   Bell, Briefcase, TrendingUp, Building2, Star,
   RefreshCw, CheckCheck, Zap, Clock, Database
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
 interface Alert {
@@ -50,6 +50,7 @@ export default function IntelligenceFeed() {
   const [unreadOnly, setUnreadOnly] = useState(false)
 
   const load = useCallback(async () => {
+    if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true)
     try {
       const [alertRes, companiesRes, jobsRes, candidatesRes, queueRes, historyRes] = await Promise.all([

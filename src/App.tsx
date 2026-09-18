@@ -13,6 +13,7 @@ import { useSearch } from './hooks/useSearch'
 import { useSupabaseJobs } from './hooks/useSupabaseJobs'
 import { useStore } from './store'
 import { formatDate } from './lib/utils'
+import { isSupabaseConfigured } from './lib/supabase'
 import './App.css'
 
 const PER_PAGE = 25
@@ -56,6 +57,15 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--page)' }}>
       <Topbar onSearch={handleSearch} onSettings={() => setActiveTab('settings')} onExport={handleExport} onReloadDb={loadFromSupabase} dbLoading={supabaseLoading} />
+      {!isSupabaseConfigured && (
+        <div style={{
+          background: '#fde8e8', color: '#991b1b', borderBottom: '1px solid #f3b8b8',
+          padding: '10px 24px', fontSize: 13, fontWeight: 600, lineHeight: 1.5,
+        }}>
+          ⚠️ Datenbank nicht verbunden — <span style={{ fontWeight: 500 }}>VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY fehlen in den Vercel Environment Variables.</span>
+          {' '}Manuelle Suche funktioniert trotzdem, Ergebnisse werden nur nicht gespeichert.
+        </div>
+      )}
       <div style={{ display: 'flex', flex: 1 }}>
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         <main style={{

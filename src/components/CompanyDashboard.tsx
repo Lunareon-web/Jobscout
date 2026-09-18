@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Building2, Briefcase, ExternalLink, RefreshCw, TrendingUp, Users, ChevronUp, ChevronDown } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
 interface Company {
@@ -53,6 +53,7 @@ export default function CompanyDashboard() {
   const [sortDir, setSortDir]       = useState<'asc' | 'desc'>('desc')
 
   const load = async () => {
+    if (!isSupabaseConfigured) { setLoading(false); return }
     setLoading(true)
     const { data, error } = await supabase
       .from('companies')

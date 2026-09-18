@@ -4,7 +4,7 @@
  * rather than merging/deduplicating — keeps count accurate.
  */
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useStore } from '../store'
 import { classifyJob } from '../lib/utils'
 import type { Job, SearchLog } from '../types'
@@ -33,9 +33,17 @@ export function useSupabaseJobs() {
   const { setJobs } = useStore()
   const [loading, setLoading] = useState(false)
   const [dbCount, setDbCount] = useState(0)
+  const [dbError, setDbError] = useState<string | null>(
+    isSupabaseConfigured ? null : 'Supabase nicht konfiguriert',
+  )
 
   const loadFromSupabase = async () => {
+    if (!isSupabaseConfigured) {
+      setDbError('Supabase nicht konfiguriert')
+      return
+    }
     setLoading(true)
+    setDbError(null)
     try {
       const { data, error } = await supabase
         .from('jobs')
@@ -61,6 +69,7 @@ export function useSupabaseJobs() {
       setJobs(mapped, log)
     } catch (e) {
       console.warn('Supabase load failed:', e)
+      setDbError('Datenbank-Ladefehler')
     } finally {
       setLoading(false)
     }
@@ -75,5 +84,5 @@ export function useSupabaseJobs() {
     return () => clearInterval(iv)
   }, [])
 
-  return { loadFromSupabase, loading, dbCount }
+  return { loadFromSupabase, loading, dbCount, dbError }
 }
