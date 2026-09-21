@@ -12,7 +12,7 @@ import { geminiUrl } from '../_lib/gemini'
 const STANDORT = 'Düsseldorf'
 const UMKREIS = 50
 
-const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan/i
+const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan|raumausstatt|grafik|\bux\b|\bui\b|messebau|ausstellung|ladenbau|shop|store|concept/i
 
 // Eine breite Suche pro Portal — Jina umgeht IP-Blocking von Vercel.
 // Hinweis: Indeed (Cloudflare-Challenge) und Jobware (kein Geo-Filter) liefern
@@ -45,9 +45,13 @@ async function geminiExtract(
   apiKey: string,
 ): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
   if (!markdown || !apiKey) return { jobs: [] }
-  // Zwei Fenster: Stellenlisten stehen selten in den ersten 4000 Zeichen
-  // (Header/Navi/Filter), sondern weiter unten. Je Fenster ein Call.
-  const windows = [markdown.slice(0, 4500), markdown.slice(4500, 9000)].filter(w => w.trim().length > 500)
+  // Drei Fenster à 4500 Zeichen: Stellenlisten stehen selten im Head
+  // (Header/Navi/Filter), sondern weiter unten im Markdown.
+  const windows = [
+    markdown.slice(0, 4500),
+    markdown.slice(4500, 9000),
+    markdown.slice(9000, 13500),
+  ].filter(w => w.trim().length > 500)
   const jobs: CrawledJob[] = []
   const notes: string[] = []
   let error: string | undefined
