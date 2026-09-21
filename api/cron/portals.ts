@@ -43,7 +43,7 @@ async function geminiExtract(
   markdown: string,
   portalName: string,
   apiKey: string,
-): Promise<{ jobs: CrawledJob[]; error?: string }> {
+): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
   if (!markdown || !apiKey) return { jobs: [] }
   const prompt = `Job-Portal: ${portalName}. Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus der Seite.
 Antworte NUR mit JSON-Array, kein Text:
@@ -71,12 +71,14 @@ Seite:\n${markdown.slice(0, 4000)}`
       return { jobs: [], error: `Gemini HTTP ${r.status}: ${body}` }
     }
     const data = await r.json()
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
+    const cand = data?.candidates?.[0]
+    const raw = cand?.content?.parts?.[0]?.text
+    const note = `finish=${cand?.finishReason || '?'} raw_len=${(raw || '').length} blocked=${data?.promptFeedback?.blockReason || 'no'}`
     let arr: unknown
     try {
       arr = JSON.parse(raw || '[]')
     } catch {
-      return { jobs: [], error: `Gemini JSON-Parse fail: ${(raw || '').slice(0, 120)}` }
+      return { jobs: [], error: `Gemini JSON-Parse fail: ${(raw || '').slice(0, 120)}`, note }
     }
     return Array.isArray(arr)
       ? {
@@ -85,8 +87,9 @@ Seite:\n${markdown.slice(0, 4000)}`
             plz: '', datum: new Date().toISOString().slice(0, 10), url: j.url || '', quelle: portalName,
             beschreibung: '', arbeitszeit: '', kategorie: classifyJob(j.titel),
           })),
+          note: `${note} parsed=${arr.length}`,
         }
-      : { jobs: [], error: 'Gemini: kein Array' }
+      : { jobs: [], error: 'Gemini: kein Array', note }
   } catch (e) {
     clearTimeout(t)
     return { jobs: [], error: `Gemini exception: ${String(e).slice(0, 150)}` }
@@ -117,14 +120,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const results = await Promise.allSettled(
     Object.entries(PORTAL_URLS).map(async ([name, url]) => {
       const md = await jinaFetch(url)
-      const { jobs, error } = await geminiExtract(md, name, geminiKey)
-      return { name, jobs, mdLen: md.length, mdSnippet: md.slice(0, 120), geminiError: error }
+      const { jobs, error, note } = await geminiExtract(md, name, geminiKey)
+      return { name, jobs, mdLen: md.length, mdSnippet: md.slice(0, 120), geminiError: error, geminiNote: note }
     })
   )
 
   const allJobs: CrawledJob[] = []
   const bySource: Record<string, number> = {}
-  const debug: Record<string, { chars: number; snippet: string; gemini_error?: string }> = {}
+  const debug: Record<string, { chars: number; snippet: string; gemini_error?: string; gemini_note?: string }> = {}
   for (const r of results) {
     if (r.status === 'fulfilled') {
       allJobs.push(...r.value.jobs)
@@ -133,6 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         chars: r.value.mdLen,
         snippet: r.value.mdSnippet,
         ...(r.value.geminiError ? { gemini_error: r.value.geminiError } : {}),
+        ...(r.value.geminiNote ? { gemini_note: r.value.geminiNote } : {}),
       }
     }
   }
