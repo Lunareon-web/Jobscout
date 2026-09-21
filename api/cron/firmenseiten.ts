@@ -6,6 +6,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
+import { geminiUrl } from '../_lib/gemini'
 import { stripHtml, safeFetch } from '../_lib/helpers'
 import { db } from '../_lib/db'
 
@@ -227,7 +228,7 @@ Seite:\n${markdown.slice(0, 3500)}`
 
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      geminiUrl(apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

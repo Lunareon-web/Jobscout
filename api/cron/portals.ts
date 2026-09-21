@@ -7,6 +7,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
 import { classifyJob } from '../_lib/classify'
 import { slugify } from '../_lib/helpers'
+import { geminiUrl } from '../_lib/gemini'
 
 const STANDORT = 'Düsseldorf'
 const UMKREIS = 50
@@ -53,7 +54,7 @@ Seite:\n${markdown.slice(0, 4000)}`
   const t = setTimeout(() => ctrl.abort(), 25000)
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      geminiUrl(apiKey),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
