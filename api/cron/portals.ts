@@ -89,6 +89,7 @@ Seite:\n${markdown.slice(0, 4000)}`
   } catch (e) {
     clearTimeout(t)
     return { jobs: [], error: `Gemini exception: ${String(e).slice(0, 150)}` }
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
