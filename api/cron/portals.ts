@@ -14,16 +14,38 @@ const UMKREIS = 50
 
 const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan|raumausstatt|grafik|\bux\b|\bui\b|messebau|ausstellung|ladenbau|shop|store|concept/i
 
-// Eine breite Suche pro Portal — Jina umgeht IP-Blocking von Vercel.
-// Hinweis: Indeed (Cloudflare-Challenge) und Jobware (kein Geo-Filter) liefern
-// via Jina nichts Brauchbares und sind raus; Stellenanzeigen/Kalaydo mit
-// verifizierten URL-Patterns (Sep 2026 via Jina gegengeprüft).
+/** Relevanz nach App-Standard: Prompt grenzt ein, Klassifizierer entscheidet. */
+function isRelevant(titel: string): boolean {
+  if (!titel || titel.length < 3) return false
+  if (classifyJob(titel) !== 'sonstiges') return true
+  return PORTAL_RELEVANZ.test(titel)
+}
+
+/**
+ * Rettet vollständige {"titel":...}-Objekte aus abgeschnittenem JSON
+ * (MAX_TOKENS-Cut mitten im Array). Flache Objekte ohne Schachtelung.
+ */
+function salvageObjects(raw: string): any[] {
+  const out: any[] = []
+  const re = /\{[^{}]*"titel"[^{}]*\}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw)) !== null) {
+    try {
+      const o = JSON.parse(m[0])
+      if (o && o.titel) out.push(o)
+    } catch { /* Teil-Objekt überspringen */ }
+  }
+  return out
+}
+
+// Drei verifizierte Portale (Sep 2026 via Jina gegengeprüft — alle liefern
+// echte Stellenlisten im Markdown). Raus: Indeed (Cloudflare-Challenge),
+// Kimeta (nur JS-Landingpage, output=rss wird ignoriert), Kalaydo (keine
+// Design-Kategorie), Jobware (kein Geo-Filter, bundesweit).
 const PORTAL_URLS: Record<string, string> = {
   karriere:        `https://www.karriere.de/jobs?what=Designer+Innenarchitekt+Architekt&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
   stepstone:       `https://www.stepstone.de/jobs/designer/in-${slugify(STANDORT)}/?radius=${UMKREIS}&sort=date`,
-  kimeta:          `https://www.kimeta.de/stellenangebote/?q=Designer+Architekt+Projektmanager&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}`,
   stellenanzeigen: `https://www.stellenanzeigen.de/jobs/duesseldorf`,
-  kalaydo:         `https://www.kalaydo.de/stellenangebote/`,
 }
 
 async function jinaFetch(url: string): Promise<string> {
@@ -64,6 +86,23 @@ async function geminiExtract(
   return { jobs, error, note: notes.join(' ') || undefined }
 }
 
+function toJobs(arr: any[], portalName: string): CrawledJob[] {
+  return (Array.isArray(arr) ? arr : [])
+    .filter((j: any) => j && isRelevant(j.titel || ''))
+    .map((j: any) => ({
+      titel: j.titel,
+      unternehmen: j.unternehmen || '',
+      ort: j.ort || STANDORT,
+      plz: '',
+      datum: new Date().toISOString().slice(0, 10),
+      url: j.url || '',
+      quelle: portalName,
+      beschreibung: '',
+      arbeitszeit: '',
+      kategorie: classifyJob(j.titel),
+    }))
+}
+
 async function geminiWindow(
   text: string,
   portalName: string,
@@ -102,15 +141,16 @@ Seite:\n${text}`
     try {
       arr = JSON.parse(raw || '[]')
     } catch {
+      // Trunkiert (MAX_TOKENS)? Vollständige Objekte retten statt alles zu verwerfen.
+      const salvaged = salvageObjects(raw || '')
+      if (salvaged.length) {
+        return { jobs: toJobs(salvaged, portalName), note: `${note} salvaged=${salvaged.length}` }
+      }
       return { jobs: [], error: `Gemini JSON-Parse fail: ${(raw || '').slice(0, 120)}`, note }
     }
     return Array.isArray(arr)
       ? {
-          jobs: arr.filter((j: any) => j.titel && PORTAL_RELEVANZ.test(j.titel)).map((j: any) => ({
-            titel: j.titel, unternehmen: j.unternehmen || '', ort: j.ort || STANDORT,
-            plz: '', datum: new Date().toISOString().slice(0, 10), url: j.url || '', quelle: portalName,
-            beschreibung: '', arbeitszeit: '', kategorie: classifyJob(j.titel),
-          })),
+          jobs: toJobs(arr, portalName),
           note: `${note} parsed=${arr.length}`,
         }
       : { jobs: [], error: 'Gemini: kein Array', note }
