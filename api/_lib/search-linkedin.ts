@@ -8,7 +8,7 @@ import {
   fetchLinkedIn,
   dedupeFilterLinkedIn,
   LINKEDIN_JOBTITEL_DEFAULT,
-} from './_lib/linkedin'
+} from './linkedin'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
