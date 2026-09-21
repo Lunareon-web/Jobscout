@@ -227,7 +227,7 @@ Seite:\n${markdown.slice(0, 3500)}`
 
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -370,7 +370,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     for (const c of noResult) {
       const md = await jinaFetch(c.career_url)
       if (md) {
-        const gjobs = await geminiExtract(md, c.name, c.city, geminiKey)
+        const gjobs = await geminiExtract(md, c.name, c.career_url, geminiKey)
         if (gjobs.length) {
           allJobs.push(...gjobs)
           log.push({ firma: c.name, count: gjobs.length, strategy: 'jina-gemini' })

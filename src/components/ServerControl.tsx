@@ -23,7 +23,7 @@ interface SourceState {
 
 const SOURCES = [
   { key: 'ba',           label: 'Bundesagentur für Arbeit', desc: 'BA-API + KldB-Berufsgruppen',               path: '/api/cron/ba',           method: 'GET' },
-  { key: 'portals',      label: 'Portale (RSS + Jina)',      desc: 'Karriere · StepStone · Kimeta + Indeed via Jina', path: '/api/cron/portals', method: 'POST' },
+  { key: 'portals',      label: 'Portale (Jina + Gemini)', desc: 'Karriere · StepStone · Kimeta · Stellenanzeigen · Kalaydo', path: '/api/cron/portals', method: 'POST' },
   { key: 'firmenseiten', label: 'Firmenseiten',             desc: 'ATS · JSON-LD · Jina + Gemini (JS-SPAs)',   path: '/api/cron/firmenseiten', method: 'POST' },
   { key: 'linkedin',     label: 'LinkedIn',                 desc: 'Guest-Scraping via linkedin-jobs-api (kein Key)', path: '/api/cron/linkedin', method: 'GET' },
   { key: 'discover',     label: 'Neue Firmen entdecken',    desc: 'Firmennamen aus BA → crawl_companies',      path: '/api/cron/discover',     method: 'GET' },

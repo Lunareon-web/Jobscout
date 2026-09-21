@@ -13,15 +13,16 @@ const UMKREIS = 50
 
 const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan/i
 
-// Eine breite Suche pro Portal — Jina umgeht IP-Blocking von Vercel
+// Eine breite Suche pro Portal — Jina umgeht IP-Blocking von Vercel.
+// Hinweis: Indeed (Cloudflare-Challenge) und Jobware (kein Geo-Filter) liefern
+// via Jina nichts Brauchbares und sind raus; Stellenanzeigen/Kalaydo mit
+// verifizierten URL-Patterns (Sep 2026 via Jina gegengeprüft).
 const PORTAL_URLS: Record<string, string> = {
   karriere:        `https://www.karriere.de/jobs?what=Designer+Innenarchitekt+Architekt&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
   stepstone:       `https://www.stepstone.de/jobs/designer/in-${slugify(STANDORT)}/?radius=${UMKREIS}&sort=date`,
   kimeta:          `https://www.kimeta.de/stellenangebote/?q=Designer+Architekt+Projektmanager&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}`,
-  indeed:          `https://de.indeed.com/jobs?q=Designer+Innenarchitekt&l=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}&sort=date`,
-  stellenanzeigen: `https://www.stellenanzeigen.de/stellenangebote/${encodeURIComponent(STANDORT)}/designer/`,
-  jobware:         `https://www.jobware.de/suche/?q=Designer+Architekt&l=${encodeURIComponent(STANDORT)}&r=${UMKREIS}`,
-  kalaydo:         `https://www.kalaydo.de/jobs/ergebnisse/?what=Designer&where=${encodeURIComponent(STANDORT)}&radius=${UMKREIS}`,
+  stellenanzeigen: `https://www.stellenanzeigen.de/jobs/duesseldorf`,
+  kalaydo:         `https://www.kalaydo.de/stellenangebote/`,
 }
 
 async function jinaFetch(url: string): Promise<string> {
@@ -37,8 +38,12 @@ async function jinaFetch(url: string): Promise<string> {
   } catch { clearTimeout(t); return '' }
 }
 
-async function geminiExtract(markdown: string, portalName: string, apiKey: string): Promise<CrawledJob[]> {
-  if (!markdown || !apiKey) return []
+async function geminiExtract(
+  markdown: string,
+  portalName: string,
+  apiKey: string,
+): Promise<{ jobs: CrawledJob[]; error?: string }> {
+  if (!markdown || !apiKey) return { jobs: [] }
   const prompt = `Job-Portal: ${portalName}. Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus der Seite.
 Antworte NUR mit JSON-Array, kein Text:
 [{"titel":"...","unternehmen":"...","ort":"...","url":"https://..."}]
@@ -48,7 +53,7 @@ Seite:\n${markdown.slice(0, 4000)}`
   const t = setTimeout(() => ctrl.abort(), 25000)
   try {
     const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,18 +65,30 @@ Seite:\n${markdown.slice(0, 4000)}`
       }
     )
     clearTimeout(t)
-    if (!r.ok) return []
+    if (!r.ok) {
+      const body = await r.text().then(s => s.slice(0, 200)).catch(() => '')
+      return { jobs: [], error: `Gemini HTTP ${r.status}: ${body}` }
+    }
     const data = await r.json()
     const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text
-    const arr = JSON.parse(raw || '[]')
+    let arr: unknown
+    try {
+      arr = JSON.parse(raw || '[]')
+    } catch {
+      return { jobs: [], error: `Gemini JSON-Parse fail: ${(raw || '').slice(0, 120)}` }
+    }
     return Array.isArray(arr)
-      ? arr.filter((j: any) => j.titel && PORTAL_RELEVANZ.test(j.titel)).map((j: any) => ({
-          titel: j.titel, unternehmen: j.unternehmen || '', ort: j.ort || STANDORT,
-          plz: '', datum: new Date().toISOString().slice(0, 10), url: j.url || '', quelle: portalName,
-          beschreibung: '', arbeitszeit: '', kategorie: classifyJob(j.titel),
-        }))
-      : []
-  } catch { clearTimeout(t); return [] }
+      ? {
+          jobs: arr.filter((j: any) => j.titel && PORTAL_RELEVANZ.test(j.titel)).map((j: any) => ({
+            titel: j.titel, unternehmen: j.unternehmen || '', ort: j.ort || STANDORT,
+            plz: '', datum: new Date().toISOString().slice(0, 10), url: j.url || '', quelle: portalName,
+            beschreibung: '', arbeitszeit: '', kategorie: classifyJob(j.titel),
+          })),
+        }
+      : { jobs: [], error: 'Gemini: kein Array' }
+  } catch (e) {
+    clearTimeout(t)
+    return { jobs: [], error: `Gemini exception: ${String(e).slice(0, 150)}` }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -98,19 +115,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const results = await Promise.allSettled(
     Object.entries(PORTAL_URLS).map(async ([name, url]) => {
       const md = await jinaFetch(url)
-      const jobs = await geminiExtract(md, name, geminiKey)
-      return { name, jobs, mdLen: md.length, mdSnippet: md.slice(0, 120) }
+      const { jobs, error } = await geminiExtract(md, name, geminiKey)
+      return { name, jobs, mdLen: md.length, mdSnippet: md.slice(0, 120), geminiError: error }
     })
   )
 
   const allJobs: CrawledJob[] = []
   const bySource: Record<string, number> = {}
-  const debug: Record<string, { chars: number; snippet: string }> = {}
+  const debug: Record<string, { chars: number; snippet: string; gemini_error?: string }> = {}
   for (const r of results) {
     if (r.status === 'fulfilled') {
       allJobs.push(...r.value.jobs)
       bySource[r.value.name] = r.value.jobs.length
-      debug[r.value.name] = { chars: r.value.mdLen, snippet: r.value.mdSnippet }
+      debug[r.value.name] = {
+        chars: r.value.mdLen,
+        snippet: r.value.mdSnippet,
+        ...(r.value.geminiError ? { gemini_error: r.value.geminiError } : {}),
+      }
     }
   }
 
