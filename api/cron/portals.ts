@@ -45,11 +45,31 @@ async function geminiExtract(
   apiKey: string,
 ): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
   if (!markdown || !apiKey) return { jobs: [] }
-  const prompt = `Job-Portal: ${portalName}. Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus der Seite.
+  // Zwei Fenster: Stellenlisten stehen selten in den ersten 4000 Zeichen
+  // (Header/Navi/Filter), sondern weiter unten. Je Fenster ein Call.
+  const windows = [markdown.slice(0, 4500), markdown.slice(4500, 9000)].filter(w => w.trim().length > 500)
+  const jobs: CrawledJob[] = []
+  const notes: string[] = []
+  let error: string | undefined
+  for (const [i, win] of windows.entries()) {
+    const r = await geminiWindow(win, portalName, apiKey)
+    jobs.push(...r.jobs)
+    if (r.note) notes.push(`w${i}:${r.note}`)
+    if (r.error && !error) error = r.error
+  }
+  return { jobs, error, note: notes.join(' ') || undefined }
+}
+
+async function geminiWindow(
+  text: string,
+  portalName: string,
+  apiKey: string,
+): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
+  const prompt = `Job-Portal: ${portalName}. Extrahiere ALLE Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus dem folgenden Seitenausschnitt (Stellen können überall im Text stehen).
 Antworte NUR mit JSON-Array, kein Text:
 [{"titel":"...","unternehmen":"...","ort":"...","url":"https://..."}]
 Leeres Array [] wenn keine passenden Stellen gefunden.
-Seite:\n${markdown.slice(0, 4000)}`
+Seite:\n${text}`
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), 25000)
   try {
@@ -60,7 +80,7 @@ Seite:\n${markdown.slice(0, 4000)}`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048, responseMimeType: 'application/json' },
         }),
         signal: ctrl.signal,
       }
