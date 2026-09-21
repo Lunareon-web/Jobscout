@@ -125,67 +125,8 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
       boxShadow: 'var(--shadow-sm)',
     }}>
 
-      {/* ── Live Crawler Status ─────────────────────────────── */}
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          {sectionLabel('Crawler Status')}
-          <button
-            onClick={refreshStats}
-            title="Aktualisieren"
-            style={{ color: 'var(--txt3)', padding: 2, marginTop: -6 }}
-          >
-            <RefreshCw size={11} />
-          </button>
-        </div>
 
-        {/* Gesamtanzahl aus Supabase */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--accent-soft)', border: '1px solid var(--accent-border)',
-          borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: 8,
-        }}>
-          <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
-            Gesamt in DB
-          </span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.5px' }}>
-            {crawlStatus?.total ?? '…'}
-          </span>
-        </div>
-
-        {/* Crawler-Runs */}
-        {crawlStatus && Object.entries(crawlStatus.last_crawls).map(([source, run]) => (
-          <div key={source} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-              background: run.status === 'running' ? '#22c55e'
-                : run.status === 'error' ? '#ef4444' : 'var(--txt3)',
-              boxShadow: run.status === 'running' ? '0 0 5px #22c55e' : 'none',
-            }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, color: 'var(--txt2)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {CRAWLER_LABELS[source] ?? source}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--txt3)' }}>
-                {run.status === 'running' ? 'läuft…' : relativeTime(run.finished_at)}
-                {run.status === 'done' && run.job_count > 0 && ` · ${run.job_count} Jobs`}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {!crawlStatus && (
-          <div style={{ fontSize: 11, color: 'var(--txt3)' }}>Lade Status…</div>
-        )}
-
-        {/* Letzter Crawl gesamt */}
-        {lastFinished && (
-          <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 4 }}>
-            Zuletzt: {relativeTime(lastFinished)}
-          </div>
-        )}
-      </div>
-
-      {/* ── Stellengesuche (direkt unter Gesamt in DB) ─── */}
+      {/* ── Stellengesuche ──────────────────────────────────── */}
       {renderNavGroup('search')}
 
       {/* ── Kategorien ──────────────────────────────────────── */}
@@ -289,6 +230,66 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
 
       {/* ── Tools ───────────────────────────────────────────── */}
       {renderNavGroup('tools')}
+
+      {/* ── Live Crawler Status ─────────────────────────────── */}
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          {sectionLabel('Crawler Status')}
+          <button
+            onClick={refreshStats}
+            title="Aktualisieren"
+            style={{ color: 'var(--txt3)', padding: 2, marginTop: -6 }}
+          >
+            <RefreshCw size={11} />
+          </button>
+        </div>
+
+        {/* Gesamtanzahl aus Supabase */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--accent-soft)', border: '1px solid var(--accent-border)',
+          borderRadius: 'var(--radius)', padding: '8px 10px', marginBottom: 8,
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+            Gesamt in DB
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.5px' }}>
+            {crawlStatus?.total ?? '…'}
+          </span>
+        </div>
+
+        {/* Crawler-Runs */}
+        {crawlStatus && Object.entries(crawlStatus.last_crawls).map(([source, run]) => (
+          <div key={source} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+              background: run.status === 'running' ? '#22c55e'
+                : run.status === 'error' ? '#ef4444' : 'var(--txt3)',
+              boxShadow: run.status === 'running' ? '0 0 5px #22c55e' : 'none',
+            }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--txt2)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {CRAWLER_LABELS[source] ?? source}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--txt3)' }}>
+                {run.status === 'running' ? 'läuft…' : relativeTime(run.finished_at)}
+                {run.status === 'done' && run.job_count > 0 && ` · ${run.job_count} Jobs`}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {!crawlStatus && (
+          <div style={{ fontSize: 11, color: 'var(--txt3)' }}>Lade Status…</div>
+        )}
+
+        {/* Letzter Crawl gesamt */}
+        {lastFinished && (
+          <div style={{ fontSize: 10, color: 'var(--txt3)', marginTop: 4 }}>
+            Zuletzt: {relativeTime(lastFinished)}
+          </div>
+        )}
+      </div>
 
       {/* ── Crawler läuft / Suchphase ───────────────────────── */}
       {(isLive || (searchPhase !== 'idle' && searchPhase !== 'done' && searchPhase !== 'error')) && (
