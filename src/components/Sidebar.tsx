@@ -25,17 +25,25 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 const NAV_ITEMS = [
   { id: 'results',   label: 'Alle Stellen',  icon: <LayoutGrid size={14} />, group: 'search' },
   { id: 'favs',      label: 'Favoriten',     icon: <Star size={14} />,       group: 'search' },
-  { id: 'companies', label: 'Unternehmen',   icon: <Building2 size={14} />,  group: 'intel' },
-  { id: 'feed',      label: 'Intelligence',  icon: <Bell size={14} />,       group: 'intel' },
   { id: 'log',       label: 'Quellen-Log',   icon: <BarChart3 size={14} />,  group: 'tools' },
   { id: 'sources',   label: 'Quellen',       icon: <Plug size={14} />,       group: 'tools' },
   { id: 'settings',  label: 'Einstellungen', icon: <Settings size={14} />,   group: 'tools' },
+  { id: 'companies', label: 'Unternehmen',   icon: <Building2 size={14} />,  group: 'tools' },
+  { id: 'feed',      label: 'Intelligence',  icon: <Bell size={14} />,       group: 'tools' },
 ]
+
+const GROUP_LABELS: Record<string, string> = {
+  search: 'Stellengesuche',
+  tools: 'Tools',
+}
 
 const CRAWLER_LABELS: Record<string, string> = {
   ba:           'BA + Berufsgruppen',
-  portals:      'Portale (RSS)',
+  portals:      'Portale (Jina + Gemini)',
   firmenseiten: 'Firmenseiten',
+  linkedin:     'LinkedIn',
+  discover:     'Firmen-Discovery',
+  cleanup:      'Cleanup (>30 Tage)',
 }
 
 function relativeTime(iso: string | null): string {
@@ -71,6 +79,39 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
       {text}
     </div>
   )
+
+  const renderNavGroup = (group: string) => {
+    const groupItems = NAV_ITEMS.filter(i => i.group === group)
+    if (!groupItems.length) return null
+    return (
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        {sectionLabel(GROUP_LABELS[group] ?? group)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {groupItems.map(item => {
+            const isActive = activeTab === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                  fontSize: 13, fontWeight: isActive ? 600 : 400,
+                  background: isActive ? 'var(--accent-soft)' : 'transparent',
+                  border: `1px solid ${isActive ? 'var(--accent-border)' : 'transparent'}`,
+                  color: isActive ? 'var(--accent-txt)' : 'var(--txt2)',
+                  width: '100%', textAlign: 'left', transition: 'all .15s',
+                }}
+              >
+                <span style={{ color: isActive ? 'var(--accent)' : 'var(--txt3)' }}>{item.icon}</span>
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <aside style={{
@@ -144,26 +185,46 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
         )}
       </div>
 
-      {/* ── Quellen-Zähler ──────────────────────────────────── */}
-      {crawlStatus && crawlStatus.by_quelle.length > 0 && (
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-          {sectionLabel('Quellen')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {crawlStatus.by_quelle.slice(0, 8).map(({ quelle, count }) => (
-              <div key={quelle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11.5, color: 'var(--txt2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>{quelle}</span>
-                <span style={{
-                  fontSize: 10.5, fontWeight: 700,
-                  background: 'var(--bg3)', color: 'var(--txt3)',
-                  padding: '1px 6px', borderRadius: 99, minWidth: 20, textAlign: 'center',
-                }}>{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ── Stellengesuche (direkt unter Gesamt in DB) ─── */}
+      {renderNavGroup('search')}
 
-      {/* ── Stats aus lokalem Store ──────────────────────────── */}
+      {/* ── Kategorien ──────────────────────────────────────── */}
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        {sectionLabel('Kategorie')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {CATEGORIES.map(cat => {
+            const isActive = filterCategory === cat.id
+            const count = counts[cat.id] || 0
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setFilterCategory(cat.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                  fontSize: 13, fontWeight: isActive ? 600 : 400,
+                  background: isActive ? 'var(--accent-soft)' : 'transparent',
+                  border: `1px solid ${isActive ? 'var(--accent-border)' : 'transparent'}`,
+                  color: isActive ? cat.activeColor : 'var(--txt2)',
+                  width: '100%', textAlign: 'left', transition: 'all .15s',
+                }}
+              >
+                <span style={{ color: isActive ? cat.activeColor : 'var(--txt3)' }}>{cat.icon}</span>
+                <span style={{ flex: 1 }}>{cat.label}</span>
+                {hasJobs && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 700,
+                    background: isActive ? 'var(--accent-soft)' : 'var(--bg3)',
+                    color: isActive ? 'var(--accent)' : 'var(--txt3)',
+                    padding: '1px 7px', borderRadius: 99, minWidth: 22, textAlign: 'center',
+                  }}>{count}</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {hasJobs && (
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
           {sectionLabel('Suchsession')}
@@ -225,78 +286,9 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
         </button>
       </div>
 
-      {/* ── Kategorien ──────────────────────────────────────── */}
-      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-        {sectionLabel('Kategorie')}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {CATEGORIES.map(cat => {
-            const isActive = filterCategory === cat.id
-            const count = counts[cat.id] || 0
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setFilterCategory(cat.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
-                  fontSize: 13, fontWeight: isActive ? 600 : 400,
-                  background: isActive ? 'var(--accent-soft)' : 'transparent',
-                  border: `1px solid ${isActive ? 'var(--accent-border)' : 'transparent'}`,
-                  color: isActive ? cat.activeColor : 'var(--txt2)',
-                  width: '100%', textAlign: 'left', transition: 'all .15s',
-                }}
-              >
-                <span style={{ color: isActive ? cat.activeColor : 'var(--txt3)' }}>{cat.icon}</span>
-                <span style={{ flex: 1 }}>{cat.label}</span>
-                {hasJobs && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 700,
-                    background: isActive ? 'var(--accent-soft)' : 'var(--bg3)',
-                    color: isActive ? 'var(--accent)' : 'var(--txt3)',
-                    padding: '1px 7px', borderRadius: 99, minWidth: 22, textAlign: 'center',
-                  }}>{count}</span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
 
-      {/* ── Navigation ──────────────────────────────────────── */}
-      <div style={{ padding: '12px 14px', flex: 1 }}>
-        {(['search', 'intel', 'tools'] as const).map(group => {
-          const groupItems = NAV_ITEMS.filter(i => i.group === group)
-          const groupLabel = group === 'search' ? 'Suche' : group === 'intel' ? 'Intelligence' : 'Tools'
-          return (
-            <div key={group} style={{ marginBottom: 14 }}>
-              {sectionLabel(groupLabel)}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {groupItems.map(item => {
-                  const isActive = activeTab === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => onTabChange(item.id)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '7px 10px', borderRadius: 'var(--radius-sm)',
-                        fontSize: 13, fontWeight: isActive ? 600 : 400,
-                        background: isActive ? 'var(--accent-soft)' : 'transparent',
-                        border: `1px solid ${isActive ? 'var(--accent-border)' : 'transparent'}`,
-                        color: isActive ? 'var(--accent-txt)' : 'var(--txt2)',
-                        width: '100%', textAlign: 'left', transition: 'all .15s',
-                      }}
-                    >
-                      <span style={{ color: isActive ? 'var(--accent)' : 'var(--txt3)' }}>{item.icon}</span>
-                      {item.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {/* ── Tools ───────────────────────────────────────────── */}
+      {renderNavGroup('tools')}
 
       {/* ── Crawler läuft / Suchphase ───────────────────────── */}
       {(isLive || (searchPhase !== 'idle' && searchPhase !== 'done' && searchPhase !== 'error')) && (
