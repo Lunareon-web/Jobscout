@@ -1,13 +1,13 @@
-/**
+﻿/**
  * Cron: Jooble via de.jooble.org API (POST, Key serverseitig).
- * Läuft täglich via Vercel Cron (siehe vercel.json).
- * Hinweis: Freier Key hat 500-Anfrage-Lifetime-Gesamtlimit — sparsam nutzen (1× täglich).
+ * LÃ¤uft tÃ¤glich via Vercel Cron (siehe vercel.json).
+ * Hinweis: Freier Key hat 500-Anfrage-Lifetime-Gesamtlimit â€” sparsam nutzen (1Ã— tÃ¤glich).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs } from '../_lib/upsert'
-import { fetchJooble, JOOBLE_KEYWORDS } from '../_lib/jooble'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs } from '../../_lib/upsert'
+import { fetchJooble, JOOBLE_KEYWORDS } from '../../_lib/jooble'
 
-const STANDORT = 'Düsseldorf'
+const STANDORT = 'DÃ¼sseldorf'
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -38,3 +38,5 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     ...(error ? { error } : {}),
   })
 }
+
+

@@ -6,19 +6,26 @@
     "api/**/*.ts": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/cron/ba", "schedule": "0 5 * * *" },
-    { "path": "/api/cron/portals", "schedule": "30 5 * * *" },
-    { "path": "/api/cron/linkedin", "schedule": "45 5 * * *" },
-    { "path": "/api/cron/jooble", "schedule": "15 4 * * *" },
-    { "path": "/api/cron/firmenseiten", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/discover", "schedule": "30 6 * * *" },
-    { "path": "/api/cron/cleanup?max_tage=30", "schedule": "0 7 * * *" }
+    { "path": "/api/cron?source=ba", "schedule": "0 5 * * *" },
+    { "path": "/api/cron?source=portals", "schedule": "30 5 * * *" },
+    { "path": "/api/cron?source=linkedin", "schedule": "45 5 * * *" },
+    { "path": "/api/cron?source=jooble", "schedule": "15 4 * * *" },
+    { "path": "/api/cron?source=firmenseiten", "schedule": "0 6 * * *" },
+    { "path": "/api/cron?source=discover", "schedule": "30 6 * * *" },
+    { "path": "/api/cron?source=cleanup&max_tage=30", "schedule": "0 7 * * *" }
   ],
   "rewrites": [
     { "source": "/api/search-fast",     "destination": "/api/search?source=fast" },
     { "source": "/api/search-portals",  "destination": "/api/search?source=portals" },
     { "source": "/api/search-firmen",   "destination": "/api/search?source=firmen" },
     { "source": "/api/search-linkedin", "destination": "/api/search?source=linkedin" },
+    { "source": "/api/cron/ba", "destination": "/api/cron?source=ba" },
+    { "source": "/api/cron/portals", "destination": "/api/cron?source=portals" },
+    { "source": "/api/cron/linkedin", "destination": "/api/cron?source=linkedin" },
+    { "source": "/api/cron/jooble", "destination": "/api/cron?source=jooble" },
+    { "source": "/api/cron/firmenseiten", "destination": "/api/cron?source=firmenseiten" },
+    { "source": "/api/cron/discover", "destination": "/api/cron?source=discover" },
+    { "source": "/api/cron/cleanup?max_tage=30", "destination": "/api/cron?source=cleanup&max_tage=30" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)",     "destination": "/index.html" }
   ],

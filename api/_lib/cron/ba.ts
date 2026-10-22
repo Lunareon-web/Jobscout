@@ -1,18 +1,18 @@
-/**
- * Cron: Bundesagentur für Arbeit + KldB-Berufsgruppen
- * Läuft manuell oder täglich via Cron.
+﻿/**
+ * Cron: Bundesagentur fÃ¼r Arbeit + KldB-Berufsgruppen
+ * LÃ¤uft manuell oder tÃ¤glich via Cron.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
-import { classifyJob } from '../_lib/classify'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../../_lib/upsert'
+import { classifyJob } from '../../_lib/classify'
 
 const BA_API = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs'
 const BA_KEY = 'jobboerse-jobsuche'
-const STANDORT = 'Düsseldorf'
+const STANDORT = 'DÃ¼sseldorf'
 const UMKREIS = 60
 const MAX_TAGE = 30
 
-// Jobtitel — breite Abdeckung Design / Interior / Architektur / Management
+// Jobtitel â€” breite Abdeckung Design / Interior / Architektur / Management
 const JOBTITEL = [
   // Design & Produkt
   'Designer', 'Produktdesigner', 'Brand Designer', 'Concept Designer',
@@ -27,7 +27,7 @@ const JOBTITEL = [
   'Shop Konzept', 'Retail Designer', 'Store Designer', 'Schaufenstergestalter',
 ]
 
-// KldB 2010 Berufsgruppen (5-stellig, nur erste 4 Stellen für BA-API)
+// KldB 2010 Berufsgruppen (5-stellig, nur erste 4 Stellen fÃ¼r BA-API)
 // Quelle: https://statistik.arbeitsagentur.de/DE/Navigation/Grundlagen/Klassifikationen/Klassifikation-der-Berufe/KldB2010/KldB2010-Nav.html
 const BERUFSGRUPPEN = [
   '3131',  // Innenarchitektur
@@ -107,7 +107,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const runId = await startCrawlRun('ba')
   const raw: CrawledJob[] = []
 
-  // ── 1. Titelsuche: alle Titel × 3 Seiten parallel (v6: Seiten ab 1) ──
+  // â”€â”€ 1. Titelsuche: alle Titel Ã— 3 Seiten parallel (v6: Seiten ab 1) â”€â”€
   const titleUrls = JOBTITEL.flatMap(t =>
     [1, 2, 3].map(p =>
       `${BA_API}?was=${encodeURIComponent(t)}&wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&angebotsart=1&veroeffentlichtseit=${MAX_TAGE}&size=25&page=${p}`
@@ -116,10 +116,10 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
   const titleResults = await Promise.allSettled(titleUrls.map(baFetch))
   titleResults.forEach(r => {
     if (r.status === 'fulfilled')
-      r.value.forEach(s => raw.push(normalize(s, 'Bundesagentur für Arbeit')))
+      r.value.forEach(s => raw.push(normalize(s, 'Bundesagentur fÃ¼r Arbeit')))
   })
 
-  // ── 2. KldB-Berufsgruppen parallel ──────────────────────────────────
+  // â”€â”€ 2. KldB-Berufsgruppen parallel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const bgUrls = BERUFSGRUPPEN.map(g =>
     `${BA_API}?wo=${encodeURIComponent(STANDORT)}&umkreis=${UMKREIS}&berufsgruppe=${g}&angebotsart=1&veroeffentlichtseit=${MAX_TAGE}&size=50&page=1`
   )
@@ -129,7 +129,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       r.value.forEach(s => raw.push(normalize(s, 'BA Berufsgruppen')))
   })
 
-  // ── Relevanzfilter + Deduplizierung ─────────────────────────────────
+  // â”€â”€ Relevanzfilter + Deduplizierung â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const seen = new Set<string>()
   const deduped = raw.filter(j => {
     if (!j.titel || j.titel.length < 2) return false
@@ -161,3 +161,5 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     ...(error ? { error } : {}),
   })
 }
+
+

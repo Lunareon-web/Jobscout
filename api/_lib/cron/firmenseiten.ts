@@ -1,14 +1,14 @@
-/**
+﻿/**
  * Cron: Firmenseiten direkt crawlen
  * Quellen: Supabase crawl_companies-Tabelle (dynamisch wachsend) + hardcoded Startliste
- * Strategien: Greenhouse API → Lever API → JSON-LD → __NEXT_DATA__ → Link-Scan
+ * Strategien: Greenhouse API â†’ Lever API â†’ JSON-LD â†’ __NEXT_DATA__ â†’ Link-Scan
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
-import { classifyJob } from '../_lib/classify'
-import { geminiUrl } from '../_lib/gemini'
-import { stripHtml, safeFetch } from '../_lib/helpers'
-import { db } from '../_lib/db'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../../_lib/upsert'
+import { classifyJob } from '../../_lib/classify'
+import { geminiUrl } from '../../_lib/gemini'
+import { stripHtml, safeFetch } from '../../_lib/helpers'
+import { db } from '../../_lib/db'
 
 const JOBTITEL_RE = new RegExp([
   'Designer', 'Innenarchitekt', 'Interior', 'Architekt', 'Raumplan',
@@ -24,39 +24,39 @@ const CRAWL_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
 
-// ── Hardcoded Startliste (Seed) ───────────────────────────────────────────────
-// Diese werden automatisch in die crawl_companies-Tabelle übertragen falls noch nicht vorhanden
+// â”€â”€ Hardcoded Startliste (Seed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Diese werden automatisch in die crawl_companies-Tabelle Ã¼bertragen falls noch nicht vorhanden
 
 const SEED_FIRMEN: { name: string; career_url: string; city: string }[] = [
-  { name: 'HPP Architekten',        career_url: 'https://www.hpp.com/de/karriere/',                                        city: 'Düsseldorf' },
-  { name: 'RKW Architektur',        career_url: 'https://www.rkw-architektur.de/buero/karriere/',                          city: 'Düsseldorf' },
-  { name: 'Ingenhoven Architects',  career_url: 'https://www.ingenhovenarchitects.com/studio/karriere/',                    city: 'Düsseldorf' },
-  { name: 'Eller + Eller',          career_url: 'https://www.eller-eller.de/karriere/',                                    city: 'Düsseldorf' },
-  { name: 'dart Architekten',       career_url: 'https://www.dart-architekten.de/buero/',                                  city: 'Düsseldorf' },
-  { name: 'Blocher Partners',       career_url: 'https://www.blocherpartners.de/karriere/',                                city: 'Düsseldorf' },
-  { name: 'Schweitzer Project',     career_url: 'https://www.schweitzer-project.com/karriere/',                           city: 'Düsseldorf' },
-  { name: 'Materie',                career_url: 'https://www.materie.de/karriere/',                                       city: 'Düsseldorf' },
+  { name: 'HPP Architekten',        career_url: 'https://www.hpp.com/de/karriere/',                                        city: 'DÃ¼sseldorf' },
+  { name: 'RKW Architektur',        career_url: 'https://www.rkw-architektur.de/buero/karriere/',                          city: 'DÃ¼sseldorf' },
+  { name: 'Ingenhoven Architects',  career_url: 'https://www.ingenhovenarchitects.com/studio/karriere/',                    city: 'DÃ¼sseldorf' },
+  { name: 'Eller + Eller',          career_url: 'https://www.eller-eller.de/karriere/',                                    city: 'DÃ¼sseldorf' },
+  { name: 'dart Architekten',       career_url: 'https://www.dart-architekten.de/buero/',                                  city: 'DÃ¼sseldorf' },
+  { name: 'Blocher Partners',       career_url: 'https://www.blocherpartners.de/karriere/',                                city: 'DÃ¼sseldorf' },
+  { name: 'Schweitzer Project',     career_url: 'https://www.schweitzer-project.com/karriere/',                           city: 'DÃ¼sseldorf' },
+  { name: 'Materie',                career_url: 'https://www.materie.de/karriere/',                                       city: 'DÃ¼sseldorf' },
   { name: 'Kurz Design',            career_url: 'https://www.kurz-design.de/karriere/',                                   city: 'Neuss' },
   { name: 'Pieron Shopkonzepte',    career_url: 'https://www.pieron.de/unternehmen/karriere/',                            city: 'Neuss' },
   { name: 'CB.e Retail Solutions',  career_url: 'https://www.cbe-retail.com/karriere/',                                   city: 'Hilden' },
   { name: 'Umdasch Shop Concept',   career_url: 'https://www.umdasch-shop-concept.com/de/unternehmen/karriere/',          city: 'Neuss' },
-  { name: 'Dula-Werke',             career_url: 'https://www.dula.de/karriere/',                                          city: 'Mönchengladbach' },
+  { name: 'Dula-Werke',             career_url: 'https://www.dula.de/karriere/',                                          city: 'MÃ¶nchengladbach' },
   { name: 'Syma-System',            career_url: 'https://www.syma.de/de/karriere/',                                       city: 'Meerbusch' },
-  { name: 'Wöhner Design',          career_url: 'https://www.woehner-design.de/karriere/',                                city: 'Düsseldorf' },
+  { name: 'WÃ¶hner Design',          career_url: 'https://www.woehner-design.de/karriere/',                                city: 'DÃ¼sseldorf' },
   { name: 'Atelier Markgraph',      career_url: 'https://www.markgraph.de/karriere/',                                     city: 'Frankfurt' },
   { name: 'Raumwerk',               career_url: 'https://www.raumwerk.net/jobs/',                                         city: 'Frankfurt' },
-  { name: 'HÜNNEBECK',              career_url: 'https://www.huennebeck.com/karriere/',                                   city: 'Ratingen' },
-  { name: 'flora&faunavisions',     career_url: 'https://www.florafaunavisions.de/karriere/',                             city: 'Düsseldorf' },
-  { name: 'OPUS Marketing',         career_url: 'https://www.opus-marketing.de/karriere/',                                city: 'Düsseldorf' },
-  { name: 'Douglas',                career_url: 'https://karriere.douglas.de/stellenangebote/',                           city: 'Düsseldorf' },
-  { name: 'Peek & Cloppenburg',     career_url: 'https://karriere.peek-cloppenburg.de/stellenangebote/',                  city: 'Düsseldorf' },
-  { name: 'Lindner Hotels',         career_url: 'https://karriere.lindner.de/',                                           city: 'Düsseldorf' },
-  { name: 'METRO',                  career_url: 'https://jobs.metro.com/de/de/search-results?m=20',                       city: 'Düsseldorf' },
-  { name: 'C&A',                    career_url: 'https://www.c-and-a.com/de/de/corporate/company/karriere/',              city: 'Düsseldorf' },
-  { name: 'Ogilvy Germany',         career_url: 'https://www.ogilvy.com/de/careers',                                     city: 'Düsseldorf' },
+  { name: 'HÃœNNEBECK',              career_url: 'https://www.huennebeck.com/karriere/',                                   city: 'Ratingen' },
+  { name: 'flora&faunavisions',     career_url: 'https://www.florafaunavisions.de/karriere/',                             city: 'DÃ¼sseldorf' },
+  { name: 'OPUS Marketing',         career_url: 'https://www.opus-marketing.de/karriere/',                                city: 'DÃ¼sseldorf' },
+  { name: 'Douglas',                career_url: 'https://karriere.douglas.de/stellenangebote/',                           city: 'DÃ¼sseldorf' },
+  { name: 'Peek & Cloppenburg',     career_url: 'https://karriere.peek-cloppenburg.de/stellenangebote/',                  city: 'DÃ¼sseldorf' },
+  { name: 'Lindner Hotels',         career_url: 'https://karriere.lindner.de/',                                           city: 'DÃ¼sseldorf' },
+  { name: 'METRO',                  career_url: 'https://jobs.metro.com/de/de/search-results?m=20',                       city: 'DÃ¼sseldorf' },
+  { name: 'C&A',                    career_url: 'https://www.c-and-a.com/de/de/corporate/company/karriere/',              city: 'DÃ¼sseldorf' },
+  { name: 'Ogilvy Germany',         career_url: 'https://www.ogilvy.com/de/careers',                                     city: 'DÃ¼sseldorf' },
 ]
 
-// ── ATS Detection ─────────────────────────────────────────────────────────────
+// â”€â”€ ATS Detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ATS = { type: 'greenhouse' | 'lever'; slug: string }
 
@@ -111,7 +111,7 @@ async function fetchLever(slug: string, firma: string, ort: string): Promise<Cra
   } catch { return [] }
 }
 
-// ── HTML Parsing ───────────────────────────────────────────────────────────────
+// â”€â”€ HTML Parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function parseJsonLd(html: string, firma: string, ort: string): CrawledJob[] {
   const jobs: CrawledJob[] = []
@@ -205,9 +205,9 @@ function parseLinkScan(html: string, firma: string, ort: string, baseUrl: string
   return jobs.slice(0, 8)
 }
 
-// ── Handler ────────────────────────────────────────────────────────────────────
+// â”€â”€ Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── Jina + Gemini Fallback für JS-SPAs ───────────────────────────────────────
+// â”€â”€ Jina + Gemini Fallback fÃ¼r JS-SPAs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function jinaFetch(url: string): Promise<string> {
   try {
@@ -220,7 +220,7 @@ async function jinaFetch(url: string): Promise<string> {
 
 async function geminiExtract(markdown: string, firma: string, careerUrl: string, apiKey: string): Promise<CrawledJob[]> {
   if (!markdown || !apiKey) return []
-  const prompt = `Karriere-Seite von "${firma}". Extrahiere alle Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Management, Projektmanagement.
+  const prompt = `Karriere-Seite von "${firma}". Extrahiere alle Stellenangebote fÃ¼r Design, Interior, Architektur, Retail, Marketing, Management, Projektmanagement.
 Antworte NUR mit einem JSON-Array. Leeres Array [] wenn keine passenden Stellen:
 [{"titel": "Jobtitel", "url": "https://...", "ort": "Stadt"}]
 Falls keine URL: ${careerUrl}
@@ -270,7 +270,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const runId = await startCrawlRun('firmenseiten')
 
   // 1. Seed-Firmen in DB eintragen falls noch nicht vorhanden
-  // Erst bekannte Namen laden, dann nur neue einfügen
+  // Erst bekannte Namen laden, dann nur neue einfÃ¼gen
   const { data: existingNames } = await db
     .from('crawl_companies').select('name').limit(2000)
   const knownSet = new Set((existingNames || []).map((r: any) => r.name.toLowerCase()))
@@ -291,7 +291,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('is_active', true)
     .not('career_url', 'is', null)
     .order('last_crawled', { ascending: true, nullsFirst: true })
-    .limit(20)  // max 20 pro Run — 60s Vercel-Timeout
+    .limit(20)  // max 20 pro Run â€” 60s Vercel-Timeout
 
   const crawl_companies = (companyRows || []) as { id: string; name: string; career_url: string; city: string }[]
 
@@ -306,7 +306,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  // 3. Alle Career Pages parallel laden (8s Timeout — Platz für Jina-Fallback)
+  // 3. Alle Career Pages parallel laden (8s Timeout â€” Platz fÃ¼r Jina-Fallback)
   const htmlResults = await Promise.allSettled(
     crawl_companies.map(c => safeFetch(c.career_url, { headers: CRAWL_HEADERS }, 8000))
   )
@@ -363,7 +363,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     log.push({ firma: c.name, count: 0, strategy: 'none' })
   }
 
-  // 5b. Jina + Gemini für max. 3 Firmen ohne Ergebnis (JS-SPAs)
+  // 5b. Jina + Gemini fÃ¼r max. 3 Firmen ohne Ergebnis (JS-SPAs)
   if (geminiKey) {
     const noResult = crawl_companies
       .filter(c => !log.find(l => l.firma === c.name && l.count > 0))
@@ -416,3 +416,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ...(error ? { error } : {}),
   })
 }
+
+

@@ -1,16 +1,16 @@
-/**
- * Cron: LinkedIn via linkedin-jobs-api (Guest-Scraping, kein Key nötig).
- * Läuft täglich via Vercel Cron (siehe vercel.json).
+﻿/**
+ * Cron: LinkedIn via linkedin-jobs-api (Guest-Scraping, kein Key nÃ¶tig).
+ * LÃ¤uft tÃ¤glich via Vercel Cron (siehe vercel.json).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs } from '../_lib/upsert'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs } from '../../_lib/upsert'
 import {
   fetchLinkedIn,
   dedupeFilterLinkedIn,
   LINKEDIN_JOBTITEL_DEFAULT,
-} from '../_lib/linkedin'
+} from '../../_lib/linkedin'
 
-const STANDORT = 'Düsseldorf'
+const STANDORT = 'DÃ¼sseldorf'
 const MAX_TAGE = 30
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
@@ -48,3 +48,5 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     ...(error ? { error } : {}),
   })
 }
+
+

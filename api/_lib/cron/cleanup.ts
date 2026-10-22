@@ -1,12 +1,12 @@
-/**
- * Cron: Karteileichen endgültig löschen
- * Löscht Jobs aus Supabase, die älter als maxTage sind
+﻿/**
+ * Cron: Karteileichen endgÃ¼ltig lÃ¶schen
+ * LÃ¶scht Jobs aus Supabase, die Ã¤lter als maxTage sind
  * (per datum, bzw. per found_at bei Jobs ohne Datum).
- * Favoriten hängen per ON DELETE CASCADE dran und werden mitgelöscht.
- * Läuft täglich via Vercel Cron (siehe vercel.json).
+ * Favoriten hÃ¤ngen per ON DELETE CASCADE dran und werden mitgelÃ¶scht.
+ * LÃ¤uft tÃ¤glich via Vercel Cron (siehe vercel.json).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, deactivateOldJobs, deleteOldJobs } from '../_lib/upsert'
+import { startCrawlRun, finishCrawlRun, deactivateOldJobs, deleteOldJobs } from '../../_lib/upsert'
 
 const DEFAULT_MAX_TAGE = 30
 
@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // 1. Sicherheitsnetz: alles Alte zuerst deaktivieren (reversibel)
     deactivated = await deactivateOldJobs(maxTage)
-    // 2. Endgültig löschen (irreversibel) — außer im Dry-Run (?dry=1)
+    // 2. EndgÃ¼ltig lÃ¶schen (irreversibel) â€” auÃŸer im Dry-Run (?dry=1)
     if (!dry) {
       const r = await deleteOldJobs(maxTage)
       deleted = r.deleted
@@ -55,3 +55,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ...(error ? { error } : {}),
   })
 }
+
+

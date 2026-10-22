@@ -1,15 +1,15 @@
-/**
+﻿/**
  * Cron: Jobportale via Jina + Gemini
  * RSS von Vercel AWS-IPs wird von allen deutschen Portalen geblockt.
- * Lösung: Jina Reader (andere IPs) + Gemini zur Job-Extraktion.
+ * LÃ¶sung: Jina Reader (andere IPs) + Gemini zur Job-Extraktion.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../_lib/upsert'
-import { classifyJob } from '../_lib/classify'
-import { slugify } from '../_lib/helpers'
-import { geminiUrl } from '../_lib/gemini'
+import { startCrawlRun, finishCrawlRun, upsertJobs, deactivateOldJobs, type CrawledJob } from '../../_lib/upsert'
+import { classifyJob } from '../../_lib/classify'
+import { slugify } from '../../_lib/helpers'
+import { geminiUrl } from '../../_lib/gemini'
 
-const STANDORT = 'Düsseldorf'
+const STANDORT = 'DÃ¼sseldorf'
 const UMKREIS = 50
 
 const PORTAL_RELEVANZ = /designer|innenarchitekt|interior|architekt|projektmanager|project.man|brand|visual|merchandis|kreativ|director|retail|marketing|bauleiter|raumplan|raumausstatt|grafik|\bux\b|\bui\b|messebau|ausstellung|ladenbau|shop|store|concept/i
@@ -22,7 +22,7 @@ function isRelevant(titel: string): boolean {
 }
 
 /**
- * Rettet vollständige {"titel":...}-Objekte aus abgeschnittenem JSON
+ * Rettet vollstÃ¤ndige {"titel":...}-Objekte aus abgeschnittenem JSON
  * (MAX_TOKENS-Cut mitten im Array). Flache Objekte ohne Schachtelung.
  */
 function salvageObjects(raw: string): any[] {
@@ -33,12 +33,12 @@ function salvageObjects(raw: string): any[] {
     try {
       const o = JSON.parse(m[0])
       if (o && o.titel) out.push(o)
-    } catch { /* Teil-Objekt überspringen */ }
+    } catch { /* Teil-Objekt Ã¼berspringen */ }
   }
   return out
 }
 
-// Drei verifizierte Portale (Sep 2026 via Jina gegengeprüft — alle liefern
+// Drei verifizierte Portale (Sep 2026 via Jina gegengeprÃ¼ft â€” alle liefern
 // echte Stellenlisten im Markdown). Raus: Indeed (Cloudflare-Challenge),
 // Kimeta (nur JS-Landingpage, output=rss wird ignoriert), Kalaydo (keine
 // Design-Kategorie), Jobware (kein Geo-Filter, bundesweit).
@@ -67,7 +67,7 @@ async function geminiExtract(
   apiKey: string,
 ): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
   if (!markdown || !apiKey) return { jobs: [] }
-  // Drei Fenster à 4500 Zeichen: Stellenlisten stehen selten im Head
+  // Drei Fenster Ã  4500 Zeichen: Stellenlisten stehen selten im Head
   // (Header/Navi/Filter), sondern weiter unten im Markdown.
   const windows = [
     markdown.slice(0, 4500),
@@ -108,7 +108,7 @@ async function geminiWindow(
   portalName: string,
   apiKey: string,
 ): Promise<{ jobs: CrawledJob[]; error?: string; note?: string }> {
-  const prompt = `Job-Portal: ${portalName}. Extrahiere ALLE Stellenangebote für Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus dem folgenden Seitenausschnitt (Stellen können überall im Text stehen).
+  const prompt = `Job-Portal: ${portalName}. Extrahiere ALLE Stellenangebote fÃ¼r Design, Interior, Architektur, Retail, Marketing, Projektmanagement aus dem folgenden Seitenausschnitt (Stellen kÃ¶nnen Ã¼berall im Text stehen).
 Antworte NUR mit JSON-Array, kein Text:
 [{"titel":"...","unternehmen":"...","ort":"...","url":"https://..."}]
 Leeres Array [] wenn keine passenden Stellen gefunden.
@@ -141,7 +141,7 @@ Seite:\n${text}`
     try {
       arr = JSON.parse(raw || '[]')
     } catch {
-      // Trunkiert (MAX_TOKENS)? Vollständige Objekte retten statt alles zu verwerfen.
+      // Trunkiert (MAX_TOKENS)? VollstÃ¤ndige Objekte retten statt alles zu verwerfen.
       const salvaged = salvageObjects(raw || '')
       if (salvaged.length) {
         return { jobs: toJobs(salvaged, portalName), note: `${note} salvaged=${salvaged.length}` }
@@ -173,7 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!geminiKey) {
     return res.status(200).json({
       ok: false, source: 'portals', fetched: 0, deduped: 0, inserted: 0,
-      error: 'Kein Gemini API Key — alle Portale brauchen Jina+Gemini (RSS von Vercel-IPs geblockt)',
+      error: 'Kein Gemini API Key â€” alle Portale brauchen Jina+Gemini (RSS von Vercel-IPs geblockt)',
       by_source: {},
     })
   }
@@ -237,3 +237,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ...(error ? { error } : {}),
   })
 }
+
+
