@@ -12,7 +12,8 @@
     { "path": "/api/cron?source=jooble", "schedule": "15 4 * * *" },
     { "path": "/api/cron?source=firmenseiten", "schedule": "0 6 * * *" },
     { "path": "/api/cron?source=discover", "schedule": "30 6 * * *" },
-    { "path": "/api/cron?source=cleanup&max_tage=30", "schedule": "0 7 * * *" }
+    { "path": "/api/cron?source=cleanup&max_tage=30", "schedule": "0 7 * * *" },
+    { "path": "/api/cron?source=companies-sync", "schedule": "30 7 * * *" }
   ],
   "rewrites": [
     { "source": "/api/search-fast",     "destination": "/api/search?source=fast" },

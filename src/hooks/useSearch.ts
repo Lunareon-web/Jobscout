@@ -97,6 +97,14 @@ export function useSearch() {
     } catch (e) {
       console.error('Sync after search failed:', e)
     }
+
+    // Unternehmen aus neuen Jobs automatisch erfassen (Score + Priorität +
+    // crawl_companies für den Karriere-Seiten-Crawl). Fire-and-forget.
+    try {
+      await fetch(`${BASE}/api/cron?source=companies-sync`, { method: 'GET' })
+    } catch (e) {
+      console.error('Company sync after search failed:', e)
+    }
   }, [config, setSearchPhase, mergeJobs, clearJobs])
 
   return { startSearch }
