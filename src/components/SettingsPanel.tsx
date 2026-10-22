@@ -61,11 +61,6 @@ export function SettingsPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
 
-      {/* Info Box */}
-      <div style={{ padding: '12px 16px', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--accent-txt)', lineHeight: 1.6 }}>
-        <strong>Wie der Crawler funktioniert:</strong> Der Discovery Agent sucht bei Bing nach Unternehmen die Stellen mit deinen konfigurierten Jobtiteln ausschreiben — z.B. <em>„Interior Designer Stelle Düsseldorf"</em>. Gefundene Firmen werden automatisch validiert, ihre Karriereseiten gecrawlt und neue Jobs eingespeichert.
-      </div>
-
       {/* Search Params */}
       <section style={sectionStyle}>
         {sectionTitle(<CheckCircle size={17} />, 'Suchparameter')}
@@ -124,18 +119,6 @@ export function SettingsPanel() {
           <RotateCcw size={14} /> Zurücksetzen
         </button>
       </div>
-
-      {/* Architecture */}
-      <section style={sectionStyle}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--txt)', marginBottom: 10 }}>Architektur</h3>
-        <div style={{ fontSize: 12.5, color: 'var(--txt2)', lineHeight: 2, fontFamily: 'monospace' }}>
-          <div>Frontend  → React + Vite → Vercel</div>
-          <div>Backend   → FastAPI (lokal) + APScheduler</div>
-          <div>Datenbank → Supabase (PostgreSQL)</div>
-          <div>Quellen   → Bing Discovery + Direktcrawl + BA-API</div>
-          <div>KI        → Ollama / gemma4-fast (lokal)</div>
-        </div>
-      </section>
     </div>
   )
 }
