@@ -83,3 +83,48 @@ function normalizeJooble(j: JoobleJob): CrawledJob | null {
     kategorie: classifyJob(titel),
   }
 }
+
+/**
+ * Vercel Function Handler für Jooble Live-Suche.
+ * Gibt IMMER 200 zurück (auch bei Fehlern), damit das Frontend
+ * den Fehler pro Quelle anzeigen kann.
+ */
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
+
+  const location = (req.query.location as string) || 'Düsseldorf'
+  const keywordsParam = req.query.keywords as string
+  const keywords = keywordsParam
+    ? keywordsParam.split(',').map(t => t.trim()).filter(Boolean)
+    : JOOBLE_KEYWORDS
+  const page = (req.query.page as string) || '1'
+
+  const t0 = Date.now()
+  let result
+  try {
+    result = await fetchJooble(process.env.JOOBLE_API_KEY || '', keywords, location, '50', page)
+  } catch (e) {
+    result = { jobs: [], rawCount: 0, error: String(e) }
+  }
+
+  return res.status(200).json({
+    jobs: result.jobs.slice(0, 200),
+    total: result.jobs.length,
+    raw: result.rawCount,
+    log: [
+      {
+        quelle: 'Jooble',
+        anzahl: result.jobs.length,
+        ms: Date.now() - t0,
+        ok: !result.error,
+        ...(result.error ? { fehler: result.error } : {}),
+      },
+    ],
+    ts: new Date().toISOString(),
+  })
+}

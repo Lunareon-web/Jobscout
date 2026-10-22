@@ -1,8 +1,3 @@
-/**
- * GET /api/search-linkedin
- * Live-Suche: LinkedIn-Jobs via linkedin-jobs-api (Guest-Scraping, kein Key).
- * 4. Phase der manuellen Suche (nach BA → Portale → Firmenseiten).
- */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
   fetchLinkedIn,
@@ -10,10 +5,13 @@ import {
   LINKEDIN_JOBTITEL_DEFAULT,
 } from './linkedin'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
 
   const standort = (req.query.standort as string) || 'Düsseldorf'
   const maxTage = parseInt((req.query.max_tage as string) || '15')

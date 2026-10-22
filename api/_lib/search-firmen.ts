@@ -117,9 +117,13 @@ function parseLinkScan(html: string, firma: string, ort: string, keyRe: RegExp):
   return jobs
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  if (req.method === 'OPTIONS') return res.status(200).end()
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
 
   const jobtitelParam = req.query.jobtitel as string
   const jobtitel = jobtitelParam
@@ -134,44 +138,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const allJobs: any[] = []
   const firmenLog: any[] = []
 
-  // Alle Firmenseiten parallel laden
-  const responses = await Promise.allSettled(
-    FIRMEN.map(f =>
-      fetch(f.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121',
-          'Accept-Language': 'de-DE,de;q=0.9',
-        },
-        signal: AbortSignal.timeout(10_000),
-      })
-        .then(r => ({ ok: r.ok, html: r.ok ? r.text() : Promise.resolve('') }))
-        .catch(() => ({ ok: false, html: Promise.resolve('') }))
+  try {
+    const responses = await Promise.allSettled(
+      FIRMEN.map(f =>
+        fetch(f.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121',
+            'Accept-Language': 'de-DE,de;q=0.9',
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
+          .then(r => ({ ok: r.ok, html: r.ok ? r.text() : Promise.resolve('') }))
+          .catch(() => ({ ok: false, html: Promise.resolve('') }))
+      )
     )
-  )
 
-  for (let i = 0; i < FIRMEN.length; i++) {
-    const firma = FIRMEN[i]
-    const result = responses[i]
-    if (result.status === 'rejected') {
-      firmenLog.push({ quelle: firma.name, anzahl: 0, ok: false, fehler: 'Timeout' })
-      continue
-    }
-    const html = await result.value.html
-    const pre = allJobs.length
+    for (let i = 0; i < FIRMEN.length; i++) {
+      const firma = FIRMEN[i]
+      const result = responses[i]
+      if (result.status === 'rejected') {
+        firmenLog.push({ quelle: firma.name, anzahl: 0, ok: false, fehler: 'Timeout' })
+        continue
+      }
+      const html = await result.value.html
+      const pre = allJobs.length
 
-    // Strategie 1: JSON-LD
-    allJobs.push(...parseJsonLd(html, firma.name, firma.ort).filter(j => keyRe.test(j.titel)))
-    // Strategie 2: __NEXT_DATA__
-    if (allJobs.length === pre) {
-      allJobs.push(...parseNextData(html, firma.name, firma.ort).filter(j => keyRe.test(j.titel)))
-    }
-    // Strategie 3: Link-Scan
-    if (allJobs.length === pre) {
-      allJobs.push(...parseLinkScan(html, firma.name, firma.ort, keyRe).slice(0, 10))
-    }
+      allJobs.push(...parseJsonLd(html, firma.name, firma.ort).filter(j => keyRe.test(j.titel)))
+      if (allJobs.length === pre) {
+        allJobs.push(...parseNextData(html, firma.name, firma.ort).filter(j => keyRe.test(j.titel)))
+      }
+      if (allJobs.length === pre) {
+        allJobs.push(...parseLinkScan(html, firma.name, firma.ort, keyRe).slice(0, 10))
+      }
 
-    const found = allJobs.length - pre
-    firmenLog.push({ quelle: firma.name, anzahl: found, ok: true })
+      const found = allJobs.length - pre
+      firmenLog.push({ quelle: firma.name, anzahl: found, ok: true })
+    }
+  } catch (e) {
+    firmenLog.push({ quelle: 'Firmen-Suche', anzahl: 0, ok: false, fehler: String(e) })
   }
 
   const seen = new Set<string>()

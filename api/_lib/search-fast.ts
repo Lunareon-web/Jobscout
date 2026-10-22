@@ -10,7 +10,6 @@ const JOBTITEL_DEFAULT = [
   'Brand Designer', 'Visual Merchandiser',
 ]
 
-// KldB Berufsgruppen für Design/Interior/Architektur/Marketing (wie cron/ba.ts)
 const BERUFSGRUPPEN = [
   '3131', // Innenarchitektur
   '3132', // Architektur
@@ -22,7 +21,6 @@ const BERUFSGRUPPEN = [
 
 function toJobDetailUrl(referenznummer: string): string {
   if (!referenznummer) return ''
-  // arbeitsagentur.de-Detailformat: base64url-kodierte Referenznummer
   const b64 = Buffer.from(referenznummer).toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   return `https://www.arbeitsagentur.de/jobsuche/jobdetail/${b64}`
@@ -39,7 +37,6 @@ function firstLocation(s: any): { ort: string; plz: string } {
 }
 
 function normalizeBA(s: any) {
-  // v6-Schema (ergebnisliste) mit v4-Fallback (stellenangebote)
   if (s.stellenangebotsTitel || s.referenznummer) {
     const { ort, plz } = firstLocation(s)
     const ref = s.referenznummer || ''
@@ -70,10 +67,13 @@ function normalizeBA(s: any) {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
 
   const standort = (req.query.standort as string) || 'Düsseldorf'
   const umkreis = parseInt((req.query.umkreis as string) || '50')
@@ -87,23 +87,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const jobs: any[] = []
   const log: any[] = []
 
-  // Titelsuche — alle Titel, 3 Seiten (v6: Seiten beginnen bei 1), alle parallel
-  // veroeffentlichtseit filtert serverseitig nach Alter
-  const titleRequests = jobtitel.flatMap(titel =>
-    [1, 2, 3].map(page =>
-      `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&veroeffentlichtseit=${maxTage}&size=25&page=${page}`
-    )
-  )
-
-  const t0 = Date.now()
   try {
+    // Titelsuche — alle Titel, 3 Seiten (v6: Seiten beginnen bei 1)
+    const titleRequests = jobtitel.flatMap(titel =>
+      [1, 2, 3].map(page =>
+        `${BA_API}?was=${encodeURIComponent(titel)}&wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&angebotsart=1&veroeffentlichtseit=${maxTage}&size=25&page=${page}`
+      )
+    )
+
+    const t0 = Date.now()
     const responses = await Promise.allSettled(
       titleRequests.map(url =>
         fetch(url, {
           headers: { 'X-API-Key': BA_KEY },
           signal: AbortSignal.timeout(8000),
         })
-          .then(res => res.ok ? res.json() : null)
+          .then(r => r.ok ? r.json() : null)
           .catch(() => null)
       )
     )
@@ -114,14 +113,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     })
     log.push({ quelle: 'BA Titelsuche', anzahl: jobs.length, ms: Date.now() - t0, ok: true })
-  } catch (e) {
-    log.push({ quelle: 'BA Titelsuche', anzahl: 0, ms: Date.now() - t0, ok: false, fehler: String(e) })
-  }
 
-  // Berufsgruppen-Suche parallel
-  const t1 = Date.now()
-  const bgCount0 = jobs.length
-  try {
+    // Berufsgruppen-Suche parallel
+    const t1 = Date.now()
+    const bgCount0 = jobs.length
     const bgResponses = await Promise.all(
       BERUFSGRUPPEN.map(grp =>
         fetch(`${BA_API}?wo=${encodeURIComponent(standort)}&umkreis=${umkreis}&berufsgruppe=${grp}&angebotsart=1&veroeffentlichtseit=${maxTage}&size=25&page=1`,
@@ -137,7 +132,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     log.push({ quelle: 'BA Berufsgruppen (Design/Arch/Mgmt)', anzahl: jobs.length - bgCount0, ms: Date.now() - t1, ok: true })
   } catch (e) {
-    log.push({ quelle: 'BA Berufsgruppen', anzahl: 0, ms: Date.now() - t1, ok: false, fehler: String(e) })
+    log.push({ quelle: 'BA-API', anzahl: 0, ms: 0, ok: false, fehler: String(e) })
   }
 
   // Deduplizieren + Filtern
@@ -154,6 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return true
   }).sort((a, b) => new Date(b.datum || 0).getTime() - new Date(a.datum || 0).getTime())
 
+  // IMMER 200 zurückgeben – auch bei Teilausfällen
   return res.status(200).json({
     jobs: deduped.slice(0, 200),
     total: deduped.length,

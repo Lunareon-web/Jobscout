@@ -88,7 +88,10 @@ export const useStore = create<AppState>()(
 
       setSearchPhase: phase => set({ searchPhase: phase }),
 
-      clearJobs: () => set({ jobs: [], searchLog: [], searchPhase: 'idle' }),
+      // Löscht nur die aktuellen Suchergebnisse, nicht den Such-Status.
+      // Wird vor jeder neuen Suche aufgerufen, damit alte DB-Treffer nicht
+      // als Ergebnis der aktuellen Suche angezeigt werden.
+      clearJobs: () => set({ jobs: [], searchLog: [] }),
 
       toggleFavorite: jobId => set(state => {
         const next = new Set(state.favorites)

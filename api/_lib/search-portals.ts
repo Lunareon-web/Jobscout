@@ -8,8 +8,6 @@ const JOBTITEL_DEFAULT = [
   'Brand Designer', 'Visual Merchandiser',
 ]
 
-// ── Helpers ───────────────────────────────────────────────────
-
 function stripHtml(s: string): string {
   return (s || '').replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -61,7 +59,6 @@ function parseRSS(xml: string, quelle: string, standort: string): any[] {
       jobs.push({ titel, unternehmen: firma, ort, plz: '', datum, url: String(url), quelle, beschreibung: desc, arbeitszeit: '' })
     })
   } catch {
-    // Regex fallback
     const itemRe = /<item[\s>]([\s\S]*?)<\/item>/gi
     let im: RegExpExecArray | null
     while ((im = itemRe.exec(xml)) !== null) {
@@ -103,8 +100,6 @@ function parseJsonLd(html: string, quelle: string, standort: string): any[] {
   }
   return jobs
 }
-
-// ── Source fetchers (all return Job[]) ────────────────────────
 
 async function fetchKimeta(jobtitel: string[], standort: string): Promise<any[]> {
   const jobs: any[] = []
@@ -177,7 +172,6 @@ async function fetchJobware(jobtitel: string[], standort: string): Promise<any[]
 
 async function fetchIndeed(jobtitel: string[], standort: string, maxTage: number): Promise<any[]> {
   const jobs: any[] = []
-  // Indeed Publisher RSS (ohne API Key, öffentlich)
   const results = await Promise.allSettled(
     jobtitel.slice(0, 5).map(t =>
       safeFetch(`https://de.indeed.com/rss?q=${encodeURIComponent(t)}&l=${encodeURIComponent(standort)}&radius=50&fromage=${maxTage}&sort=date`,
@@ -188,11 +182,13 @@ async function fetchIndeed(jobtitel: string[], standort: string, maxTage: number
   return jobs
 }
 
-// ── Main Handler ──────────────────────────────────────────────
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  if (req.method === 'OPTIONS') return res.status(200).end()
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
 
   const standort = (req.query.standort as string) || 'Düsseldorf'
   const umkreis = parseInt((req.query.umkreis as string) || '50')
@@ -203,60 +199,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : JOBTITEL_DEFAULT
 
   const cutoff = new Date(Date.now() - maxTage * 86_400_000)
-
-  // ── ALLE Quellen parallel ─────────────────────────────────
   const t0 = Date.now()
-  const [kimeta, stepstone, karriere, stellenanzeigen, kalaydo, jobware, indeed] = await Promise.allSettled([
-    fetchKimeta(jobtitel, standort),
-    fetchStepStone(jobtitel, standort, maxTage),
-    fetchKarriereDe(jobtitel, standort),
-    fetchStellenanzeigen(jobtitel, standort),
-    fetchKalaydo(jobtitel, standort),
-    fetchJobware(jobtitel, standort),
-    fetchIndeed(jobtitel, standort, maxTage),
-  ])
 
-  const sources = [
-    { name: 'Kimeta RSS',          result: kimeta },
-    { name: 'StepStone',           result: stepstone },
-    { name: 'Karriere.de',         result: karriere },
-    { name: 'Stellenanzeigen.de',  result: stellenanzeigen },
-    { name: 'Kalaydo (Rheinland)', result: kalaydo },
-    { name: 'Jobware',             result: jobware },
-    { name: 'Indeed',              result: indeed },
-  ]
+  try {
+    const [kimeta, stepstone, karriere, stellenanzeigen, kalaydo, jobware, indeed] = await Promise.allSettled([
+      fetchKimeta(jobtitel, standort),
+      fetchStepStone(jobtitel, standort, maxTage),
+      fetchKarriereDe(jobtitel, standort),
+      fetchStellenanzeigen(jobtitel, standort),
+      fetchKalaydo(jobtitel, standort),
+      fetchJobware(jobtitel, standort),
+      fetchIndeed(jobtitel, standort, maxTage),
+    ])
 
-  const allJobs: any[] = []
-  const log: any[] = []
+    const sources = [
+      { name: 'Kimeta RSS', result: kimeta },
+      { name: 'StepStone', result: stepstone },
+      { name: 'Karriere.de', result: karriere },
+      { name: 'Stellenanzeigen.de', result: stellenanzeigen },
+      { name: 'Kalaydo (Rheinland)', result: kalaydo },
+      { name: 'Jobware', result: jobware },
+      { name: 'Indeed', result: indeed },
+    ]
 
-  sources.forEach(({ name, result }) => {
-    if (result.status === 'fulfilled') {
-      allJobs.push(...result.value)
-      log.push({ quelle: name, anzahl: result.value.length, ms: Date.now() - t0, ok: true })
-    } else {
-      log.push({ quelle: name, anzahl: 0, ms: Date.now() - t0, ok: false, fehler: String(result.reason) })
-    }
-  })
+    const allJobs: any[] = []
+    const log: any[] = []
 
-  // ── Deduplizieren + Filtern ───────────────────────────────
-  const seen = new Set<string>()
-  const deduped = allJobs.filter(j => {
-    if (!j.titel || j.titel.length < 3) return false
-    const key = `${j.titel}|${j.unternehmen}`.toLowerCase().replace(/\s/g, '')
-    if (seen.has(key)) return false
-    seen.add(key)
-    if (j.datum) {
-      const d = new Date(j.datum)
-      if (!isNaN(d.getTime()) && d < cutoff) return false
-    }
-    return true
-  }).sort((a, b) => new Date(b.datum || 0).getTime() - new Date(a.datum || 0).getTime())
+    sources.forEach(({ name, result }) => {
+      if (result.status === 'fulfilled') {
+        allJobs.push(...result.value)
+        log.push({ quelle: name, anzahl: result.value.length, ms: Date.now() - t0, ok: true })
+      } else {
+        log.push({ quelle: name, anzahl: 0, ms: Date.now() - t0, ok: false, fehler: String(result.reason) })
+      }
+    })
 
-  return res.status(200).json({
-    jobs: deduped.slice(0, 300),
-    total: deduped.length,
-    raw: allJobs.length,
-    log,
-    ts: new Date().toISOString(),
-  })
+    const seen = new Set<string>()
+    const deduped = allJobs.filter(j => {
+      if (!j.titel || j.titel.length < 3) return false
+      const key = `${j.titel}|${j.unternehmen}`.toLowerCase().replace(/\s/g, '')
+      if (seen.has(key)) return false
+      seen.add(key)
+      if (j.datum) {
+        const d = new Date(j.datum)
+        if (!isNaN(d.getTime()) && d < cutoff) return false
+      }
+      return true
+    }).sort((a, b) => new Date(b.datum || 0).getTime() - new Date(a.datum || 0).getTime())
+
+    return res.status(200).json({
+      jobs: deduped.slice(0, 300),
+      total: deduped.length,
+      raw: allJobs.length,
+      log,
+      ts: new Date().toISOString(),
+    })
+  } catch (e) {
+    return res.status(200).json({
+      jobs: [],
+      total: 0,
+      raw: 0,
+      log: [{ quelle: 'Portale', anzahl: 0, ms: Date.now() - t0, ok: false, fehler: String(e) }],
+      ts: new Date().toISOString(),
+    })
+  }
 }

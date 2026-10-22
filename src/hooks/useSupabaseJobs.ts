@@ -30,7 +30,7 @@ function mapRow(row: any): Job {
 }
 
 export function useSupabaseJobs() {
-  const { setJobs } = useStore()
+  const { setJobs, searchPhase } = useStore()
   const [loading, setLoading] = useState(false)
   const [dbCount, setDbCount] = useState(0)
   const [dbError, setDbError] = useState<string | null>(
@@ -38,6 +38,11 @@ export function useSupabaseJobs() {
   )
 
   const loadFromSupabase = async () => {
+    // Während einer manuellen Suche nicht laden — sonst würden die gerade
+    // gefundenen Ergebnisse durch den DB-Reload überschrieben.
+    if (searchPhase !== 'idle') {
+      return
+    }
     if (!isSupabaseConfigured) {
       setDbError('Supabase nicht konfiguriert')
       return
@@ -82,7 +87,7 @@ export function useSupabaseJobs() {
     loadFromSupabase()
     const iv = setInterval(loadFromSupabase, 60_000)
     return () => clearInterval(iv)
-  }, [])
+  }, [searchPhase])
 
   return { loadFromSupabase, loading, dbCount, dbError }
 }

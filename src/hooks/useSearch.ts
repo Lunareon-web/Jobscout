@@ -23,7 +23,9 @@ export function useSearch() {
   const { config, setSearchPhase, mergeJobs, clearJobs } = useStore()
 
   const startSearch = useCallback(async () => {
-    // Don't clear — keep Supabase crawler jobs, merge manual results on top
+    // Alte Ergebnisse löschen, damit keine DB-Altbestände als
+    // Ergebnis der aktuellen Suche angezeigt werden.
+    clearJobs()
     setSearchPhase('fast')
 
     const params = {

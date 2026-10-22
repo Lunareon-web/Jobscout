@@ -10,7 +10,7 @@ import fastHandler from './_lib/search-fast'
 import portalsHandler from './_lib/search-portals'
 import firmenHandler from './_lib/search-firmen'
 import linkedinHandler from './_lib/search-linkedin'
-import joobleHandler from './_lib/search-jooble'
+import joobleHandler from './_lib/jooble'
 
 const HANDLERS: Record<string, (req: VercelRequest, res: VercelResponse) => unknown> = {
   fast: fastHandler,
