@@ -1,6 +1,7 @@
-import { Search, Star, BarChart3, Plug, Settings, Grid3X3, Palette, Armchair, Building, Briefcase, LayoutGrid, MoreHorizontal, Building2, Bell, RefreshCw } from 'lucide-react'
+import { Search, Star, BarChart3, Plug, Settings, Grid3X3, Palette, Armchair, Building, Briefcase, LayoutGrid, MoreHorizontal, Building2, Bell, RefreshCw, Play, Loader } from 'lucide-react'
 import { useStore } from '../store'
 import { useCrawlStatus } from '../hooks/useCrawlStatus'
+import { useCrawler } from '../hooks/useCrawler'
 import type { FilterCategory, SortOption } from '../types'
 
 const CATEGORIES: { id: FilterCategory; label: string; icon: React.ReactNode; activeColor: string }[] = [
@@ -70,7 +71,7 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
   } = useStore()
 
   const { status: crawlStatus, isLive, lastFinished, refresh: refreshStats } = useCrawlStatus()
-
+  const { running: crawlRunning, runAll: crawlRunAll, total: crawlTotal, anyDone: crawlAnyDone } = useCrawler()
   const counts = getCategoryCounts()
   const hasJobs = jobs.length > 0
 
@@ -127,7 +128,56 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
 
 
       {/* ── Stellengesuche ──────────────────────────────────── */}
-      {renderNavGroup('search')}
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        {sectionLabel('Stellengesuche')}
+        <button
+          onClick={crawlRunAll}
+          disabled={crawlRunning}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 7, padding: '9px 0', borderRadius: 'var(--radius-sm)',
+            fontSize: 13, fontWeight: 700,
+            cursor: crawlRunning ? 'not-allowed' : 'pointer',
+            background: crawlRunning ? 'var(--bg3)' : 'var(--accent)',
+            color: crawlRunning ? 'var(--txt3)' : '#fff',
+            border: 'none',
+            boxShadow: crawlRunning ? 'none' : '0 4px 12px -3px rgba(79,70,229,.4)',
+            transition: 'all .2s',
+          }}
+        >
+          {crawlRunning
+            ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} /> Crawl läuft…</>
+            : <><Play size={13} fill="currentColor" /> Alle Quellen starten</>}
+        </button>
+        {crawlAnyDone && (
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--txt2)' }}>
+            {crawlTotal.fetched} gefunden · {crawlTotal.inserted} neu in DB
+          </div>
+        )}
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {NAV_ITEMS.filter(i => i.group === 'search').map(item => {
+            const isActive = activeTab === item.id
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                  fontSize: 13, fontWeight: isActive ? 600 : 400,
+                  background: isActive ? 'var(--accent-soft)' : 'transparent',
+                  border: `1px solid ${isActive ? 'var(--accent-border)' : 'transparent'}`,
+                  color: isActive ? 'var(--accent-txt)' : 'var(--txt2)',
+                  width: '100%', textAlign: 'left', transition: 'all .15s',
+                }}
+              >
+                <span style={{ color: isActive ? 'var(--accent)' : 'var(--txt3)' }}>{item.icon}</span>
+                {item.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* ── Kategorien ──────────────────────────────────────── */}
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
@@ -307,6 +357,7 @@ export function Sidebar({ activeTab, onTabChange }: Props) {
             {!isLive && searchPhase === 'portals' && 'Portale werden durchsucht…'}
             {!isLive && searchPhase === 'firmen'  && 'Firmenseiten direkt…'}
             {!isLive && searchPhase === 'linkedin' && 'LinkedIn…'}
+            {!isLive && searchPhase === 'jooble' && 'Jooble…'}
           </div>
         </div>
       )}

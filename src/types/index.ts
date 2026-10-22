@@ -58,4 +58,4 @@ export interface SearchHistoryEntry {
 
 export type SortOption = 'date' | 'title' | 'company' | 'source' | 'favorites' | 'score'
 export type FilterCategory = 'all' | JobCategory | 'direkt'
-export type SearchPhase = 'idle' | 'fast' | 'portals' | 'firmen' | 'linkedin' | 'done' | 'error'
+export type SearchPhase = 'idle' | 'fast' | 'portals' | 'firmen' | 'linkedin' | 'jooble' | 'done' | 'error'

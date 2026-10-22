@@ -68,6 +68,15 @@ export function useSearch() {
       console.error('LinkedIn search failed:', e)
     }
 
+    // Phase 5: Jooble API (~5-10s)
+    setSearchPhase('jooble')
+    try {
+      const { jobs, log } = await callSearchApi('search-jooble', params)
+      mergeJobs(jobs, log)
+    } catch (e) {
+      console.error('Jooble search failed:', e)
+    }
+
     setSearchPhase('done')
 
     // Manuelle Treffer in Supabase persistieren, damit der 60s-DB-Reload

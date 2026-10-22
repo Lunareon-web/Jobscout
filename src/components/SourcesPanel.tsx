@@ -10,6 +10,7 @@ const SOURCES = [
   { name: 'Kalaydo (Rheinland)', note: 'JSON-LD, regional NRW/Rheinland', type: 'Scraping', color: 'var(--blue)' },
   { name: 'Firmenseiten direkt (20)', note: 'JSON-LD → __NEXT_DATA__ → Link-Scan — parallel', type: 'Direkt', color: 'var(--gold)' },
   { name: 'LinkedIn', note: 'Guest-Scraping via linkedin-jobs-api — kein Key nötig', type: 'API', color: 'var(--blue)' },
+  { name: 'Jooble', note: 'Jooble API (de.jooble.org) — Key serverseitig, 500-Anfrage-Lifetime', type: 'API', color: 'var(--blue)' },
 ]
 
 export function SourcesPanel() {
