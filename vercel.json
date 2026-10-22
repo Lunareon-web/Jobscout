@@ -26,7 +26,7 @@
     { "source": "/api/cron/jooble", "destination": "/api/cron?source=jooble" },
     { "source": "/api/cron/firmenseiten", "destination": "/api/cron?source=firmenseiten" },
     { "source": "/api/cron/discover", "destination": "/api/cron?source=discover" },
-    { "source": "/api/cron/cleanup?max_tage=30", "destination": "/api/cron?source=cleanup&max_tage=30" },
+    { "source": "/api/cron/cleanup", "destination": "/api/cron?source=cleanup&max_tage=30" },
     { "source": "/api/search-jooble", "destination": "/api/search?source=jooble" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)",     "destination": "/index.html" }
