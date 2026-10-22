@@ -23,9 +23,11 @@ CREATE INDEX IF NOT EXISTS crawl_companies_last_crawled_idx ON crawl_companies(l
 
 -- RLS
 ALTER TABLE crawl_companies ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "Crawl companies öffentlich lesbar"
+DROP POLICY IF EXISTS "Crawl companies öffentlich lesbar" ON crawl_companies;
+CREATE POLICY "Crawl companies öffentlich lesbar"
   ON crawl_companies FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "Service kann crawl_companies verwalten"
+DROP POLICY IF EXISTS "Service kann crawl_companies verwalten" ON crawl_companies;
+CREATE POLICY "Service kann crawl_companies verwalten"
   ON crawl_companies FOR ALL USING (true);
 
 -- companies: sicherstellen dass alle Spalten vorhanden sind (002 hat sie angelegt, aber sicher ist sicher)
